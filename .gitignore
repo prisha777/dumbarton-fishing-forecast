@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*-check.json
+browser-test-results.json
+.DS_Store
+.gh_config/
