@@ -2,7 +2,7 @@
 
 A minimalist React dashboard with a Python backend for fishing conditions near the Dumbarton Bridge.
 
-The backend calls NOAA CO-OPS and NOAA/NWS endpoints, then calculates a 0-100 fishing score using tide movement, wind, water temperature, moon phase, and time of day. The frontend shows a mobile-first forecast interface inspired by the provided screenshots.
+The backend calls NOAA CO-OPS and NOAA/NWS endpoints, then calculates a 0-100 fishing score using tide movement, wind, water temperature, moon phase, and time of day. The frontend shows a mobile-first forecast interface.
 
 The Explore tab adds a scroll-feed of free learning resources for lake ecology, fishing, weather, environmental protection laws, NOAA programs, research articles, and documentary-style video collections.
 
