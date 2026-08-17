@@ -239,6 +239,167 @@ def species_insights(score: int, tide: str, water_temp: float | None, wind: floa
     ]
 
 
+def cause_entry(name: str, severity: str, evidence: str, fix: str) -> dict:
+    return {"name": name, "severity": severity, "evidence": evidence, "fix": fix}
+
+
+def build_no_catch_diagnosis(
+    windows: list[dict],
+    best: dict,
+    tides: list[dict],
+    hourly: list[dict],
+    water_temp: float | None,
+    wind_observation: dict | None,
+    moon: dict,
+) -> dict:
+    causes = []
+    best_score = int(best.get("score") or 0)
+    best_tide = best.get("tide", "unknown")
+    best_wind = float(best.get("wind") or 0)
+    best_movement = float(best.get("movement") or 0)
+    fishable = [row for row in windows if 5 <= int(row.get("hour", 0)) <= 20]
+    slow_windows = [row for row in fishable if float(row.get("movement") or 0) < 0.18 or row.get("tide") == "slack"]
+    fast_windows = [row for row in fishable if float(row.get("movement") or 0) > 1.15]
+    morning_evening = [row for row in fishable if int(row.get("hour", 0)) in range(6, 10) or int(row.get("hour", 0)) in range(17, 20)]
+    precip_values = [
+        parse_float((period.get("probabilityOfPrecipitation") or {}).get("value"))
+        for period in hourly
+    ]
+    precip_values = [value for value in precip_values if value is not None]
+    rain_chance = max(precip_values) if precip_values else 0
+    poor_weather_words = {"Rain", "Showers", "Thunderstorms", "Fog", "Windy"}
+    rough_periods = [
+        period.get("shortForecast", "")
+        for period in hourly
+        if any(word.lower() in period.get("shortForecast", "").lower() for word in poor_weather_words)
+    ]
+
+    if best_score < 50:
+        causes.append(
+            cause_entry(
+                "Low overall bite signal",
+                "High" if best_score < 40 else "Medium",
+                f"The best available window only scores {best_score}/100 using NOAA tide timing and NWS wind.",
+                "Plan around the highest-scoring window, or treat the trip as scouting instead of a high-odds catch trip.",
+            )
+        )
+
+    if best_tide == "slack" or (fishable and len(slow_windows) / len(fishable) >= 0.35):
+        causes.append(
+            cause_entry(
+                "Weak or slack current",
+                "High" if best_tide == "slack" else "Medium",
+                f"The best window is {best_tide}, with about {round(best_movement, 2)} ft/hr tide movement.",
+                "Fish the first half of the incoming or outgoing tide, and move baits along current seams, pilings, and depth changes.",
+            )
+        )
+
+    if fast_windows and best_movement > 1.15:
+        causes.append(
+            cause_entry(
+                "Presentation may be moving too fast",
+                "Medium",
+                f"NOAA tide predictions show up to {round(max(float(row.get('movement') or 0) for row in fast_windows), 2)} ft/hr movement during fishable hours.",
+                "Use heavier sinkers, shorter drifts, or fish edges where current slows behind structure.",
+            )
+        )
+
+    observed_gust = parse_float((wind_observation or {}).get("gust"))
+    if best_wind >= 15 or (observed_gust is not None and observed_gust >= 22):
+        wind_evidence = f"NWS forecast wind is about {round(best_wind)} mph in the best window"
+        if observed_gust is not None:
+            wind_evidence += f", and NOAA observed gusts are near {round(observed_gust)} mph"
+        causes.append(
+            cause_entry(
+                "Wind and chop made fishing harder",
+                "High" if best_wind >= 20 or (observed_gust is not None and observed_gust >= 28) else "Medium",
+                f"{wind_evidence}.",
+                "Pick protected shorelines, shorten casts, add weight, or wait for a calmer tide window.",
+            )
+        )
+
+    if water_temp is None:
+        causes.append(
+            cause_entry(
+                "Water temperature signal missing",
+                "Low",
+                "The nearby NOAA station is not reporting water temperature right now.",
+                "Use tide, wind, and recent local reports more heavily until the sensor reports again.",
+            )
+        )
+    elif water_temp < 53 or water_temp > 67:
+        causes.append(
+            cause_entry(
+                "Water temperature may not fit the target bite",
+                "Medium",
+                f"Latest NOAA water temperature nearby is {round(water_temp, 1)} degrees F.",
+                "Slow down presentations in colder water; in warmer water, fish early, deeper, or where current improves oxygen.",
+            )
+        )
+
+    if morning_evening and best.get("hour") not in [row.get("hour") for row in morning_evening] and best_score < 65:
+        causes.append(
+            cause_entry(
+                "Missed low-light feeding window",
+                "Medium",
+                f"The best modeled hour is {best.get('label', 'later in the day')}, while dawn and evening windows score lower today.",
+                "If you fished midday, try the next dawn/evening tide overlap when fish are less light-shy.",
+            )
+        )
+
+    if rain_chance >= 35 or rough_periods:
+        causes.append(
+            cause_entry(
+                "Changing weather may have shifted fish behavior",
+                "Medium" if rain_chance < 65 else "High",
+                f"NWS hourly forecast shows up to {round(rain_chance)}% precipitation chance and {rough_periods[0] if rough_periods else 'unsettled weather'} nearby.",
+                "Watch for fronts, pressure changes, muddy water, and reduced visibility; simplify bait choice and fish slower.",
+            )
+        )
+
+    if best_score >= 65 and not causes:
+        causes.append(
+            cause_entry(
+                "Technique or exact location mismatch",
+                "Medium",
+                f"Conditions look fishable: {best_tide} tide, {round(best_wind)} mph wind, and a {best_score}/100 score.",
+                "Change one variable at a time: bait size, depth, casting angle, retrieve speed, or move to current edges with birds or baitfish.",
+            )
+        )
+
+    if len(causes) < 3:
+        causes.append(
+            cause_entry(
+                "Fish may be feeding outside the visible spot",
+                "Low",
+                f"The moon is {moon['label'].lower()} with {moon['illumination']}% illumination, which can shift feeding timing.",
+                "Look for bait, birds, surface pushes, clearer water, and structure; do not stay too long in dead water.",
+            )
+        )
+
+    severity_points = {"High": 28, "Medium": 18, "Low": 8}
+    risk = max(5, min(100, 100 - best_score + sum(severity_points.get(item["severity"], 8) for item in causes[:3]) // 2))
+    top = max(causes, key=lambda item: severity_points.get(item["severity"], 0))
+    status = "High no-catch risk" if risk >= 70 else "Moderate no-catch risk" if risk >= 45 else "Low no-catch risk"
+    summary = (
+        f"The most likely reason for a blank trip is {top['name'].lower()}. "
+        f"This is based on NOAA tide movement, NWS hourly weather, observed water/wind data when available, and the moon phase."
+    )
+    return {
+        "risk": round(risk),
+        "status": status,
+        "topCause": top["name"],
+        "summary": summary,
+        "causes": causes[:5],
+        "dataUsed": [
+            "NOAA CO-OPS tide movement and tide direction",
+            "NOAA/NWS hourly wind and weather forecast",
+            "NOAA observed water temperature and wind when available",
+            "Moon phase approximation for light and feeding timing",
+        ],
+    }
+
+
 def summarize_scan_period(periods: list[dict]) -> dict:
     if not periods:
         return {"wind": None, "temp": None, "precip": 0, "short": "Forecast unavailable", "hour": None}
@@ -463,6 +624,7 @@ def build_forecast(day: dt.date) -> dict:
 
     moon = moon_phase(day)
     windows, best = score_window(tides, hourly, water_temp, moon)
+    no_catch = build_no_catch_diagnosis(windows, best, tides, hourly, water_temp, wind_observation, moon)
     score = best.get("score", 0)
     wind = best.get("wind", 0)
     alerts = []
@@ -513,12 +675,14 @@ def build_forecast(day: dt.date) -> dict:
         "moon": moon,
         "windows": windows,
         "species": species_insights(score, best.get("tide", ""), water_temp, wind),
+        "noCatch": no_catch,
         "dataStatus": "live" if not errors else "partial",
         "errors": errors,
         "sources": [
             "NOAA CO-OPS tide predictions station 9414509",
             "NOAA/NWS hourly forecast API for Dumbarton Bridge coordinates",
             "NOAA CO-OPS observed water temperature and wind when available",
+            "No-catch diagnosis uses NOAA tide movement, NWS weather, observed water/wind data, and moon phase timing",
         ],
     }
 

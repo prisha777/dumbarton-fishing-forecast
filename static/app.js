@@ -303,6 +303,7 @@ function HomePage({ selected, setSelected, forecast, loading, settings }) {
     const bPreferred = settings.preferredSpecies.includes(b.name) ? 0 : 1;
     return aPreferred - bPreferred;
   });
+  const noCatch = forecast && forecast.noCatch;
 
   return [
     h(
@@ -358,6 +359,33 @@ function HomePage({ selected, setSelected, forecast, loading, settings }) {
       h("article", null, h("span", null, "Current"), h("strong", null, forecast && forecast.best && forecast.best.movement ? `${forecast.best.movement} ft/hr` : "--")),
       h("article", null, h("span", null, "Moon"), h("strong", null, `${(forecast && forecast.moon && forecast.moon.illumination) || "--"}%`)),
       h("article", null, h("span", null, "Top tide"), h("strong", null, (forecast && forecast.best && forecast.best.tide) || "--"))
+    ),
+    h(
+      "section",
+      { className: "no-catch-panel", key: "home-no-catch" },
+      h("div", { className: "section-head compact" }, h("h2", null, "No-catch clues"), h("span", null, "real data")),
+      h(
+        "div",
+        { className: "no-catch-summary" },
+        h("div", null, h("span", null, "Blank-trip risk"), h("strong", null, noCatch ? `${noCatch.risk}/100` : "--")),
+        h("p", null, noCatch ? noCatch.status : "Checking tide, wind, water, weather, and moon signals.")
+      ),
+      h("h3", null, noCatch ? noCatch.topCause : "Finding likely cause"),
+      h("p", null, noCatch ? noCatch.summary : "The app will explain why a no-catch day may happen once NOAA data loads."),
+      h(
+        "div",
+        { className: "cause-list" },
+        ...((noCatch && noCatch.causes) || []).slice(0, 3).map((cause) =>
+          h(
+            "article",
+            { key: cause.name },
+            h("span", { className: `severity ${cause.severity.toLowerCase()}` }, cause.severity),
+            h("strong", null, cause.name),
+            h("p", null, cause.evidence),
+            h("small", null, cause.fix)
+          )
+        )
+      )
     ),
     h("section", { className: "section-head", key: "home-species-title" }, h("h2", null, "Species"), h("span", null, "preferred first")),
     h(
@@ -619,7 +647,13 @@ function ProfilePage({ settings, setSettings }) {
         "article",
         null,
         h("h3", null, "Start on Home"),
-        h("p", null, "Use the fishing score, best time window, tide chart, wind chart, and species tips to decide whether today is worth fishing.")
+        h("p", null, "Use the fishing score, best time window, no-catch clues, tide chart, wind chart, and species tips to decide whether today is worth fishing.")
+      ),
+      h(
+        "article",
+        null,
+        h("h3", null, "Use No-catch clues after a blank trip"),
+        h("p", null, "The app checks NOAA tide movement, NWS wind and weather, water temperature when available, and moon timing to explain likely reasons nothing bit.")
       ),
       h(
         "article",
@@ -635,6 +669,7 @@ function ProfilePage({ settings, setSettings }) {
       ),
       h("div", { className: "faq-title" }, "FAQs"),
       h("details", null, h("summary", null, "What does the fishing score mean?"), h("p", null, "It is a 0 to 100 estimate based on tide movement, wind, water temperature when available, moon phase, and daylight timing.")),
+      h("details", null, h("summary", null, "Why did I not catch anything?"), h("p", null, "Open Home and read No-catch clues. It points to likely causes such as slack current, strong wind, water temperature mismatch, changing weather, or technique and location fit.")),
       h("details", null, h("summary", null, "How often does the app update?"), h("p", null, "Weather and alerts can refresh about every 10 to 20 minutes. Tide predictions are cached for about 1 hour.")),
       h("details", null, h("summary", null, "Is this a safety guarantee?"), h("p", null, "No. It is a decision aid. Always look at the water, check official warnings, and avoid fishing if conditions feel unsafe.")),
       h("details", null, h("summary", null, "Why does water temperature sometimes show blank?"), h("p", null, "Some NOAA stations do not report every product at all times. When water temperature is missing, the app leans more on tide, wind, and light.")),
