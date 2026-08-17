@@ -20,6 +20,14 @@ LAT = 37.5067
 LON = -122.115
 CACHE: dict[str, tuple[float, object]] = {}
 USER_AGENT = "DumbartonFishingForecast/1.0 contact: local-demo@example.com"
+COOPS_OBSERVATION_STATIONS = [
+    {"id": STATION_ID, "name": STATION_NAME},
+    {"id": "9414290", "name": "San Francisco"},
+    {"id": "9414750", "name": "Alameda"},
+    {"id": "9414863", "name": "Richmond"},
+    {"id": "9414523", "name": "Redwood City"},
+    {"id": "9414458", "name": "San Mateo Bridge"},
+]
 WEATHER_SCAN_POINTS = [
     {"name": "Dumbarton Bridge", "lat": LAT, "lon": LON},
     {"name": "Redwood City shore", "lat": 37.535, "lon": -122.224},
@@ -243,12 +251,53 @@ def cause_entry(name: str, severity: str, evidence: str, fix: str) -> dict:
     return {"name": name, "severity": severity, "evidence": evidence, "fix": fix}
 
 
+def water_temperature_signal(water_temp: float | None, station: dict | None = None) -> dict:
+    if water_temp is None:
+        return {
+            "status": "Unavailable",
+            "severity": "Low",
+            "summary": "No nearby NOAA water-temperature observation is available right now.",
+            "advice": "Use tide movement, wind, recent reports, and visible bait activity until a nearby sensor reports again.",
+            "station": station,
+        }
+
+    station_name = station.get("name") if station else "nearby NOAA station"
+    if water_temp < 50:
+        status = "Cold water"
+        severity = "High"
+        summary = f"NOAA {station_name} reports {round(water_temp, 1)} degrees F, cold enough to slow many Bay predators."
+        advice = "Fish slower, stay near deeper edges, and give bait more time near bottom or structure."
+    elif water_temp < 55:
+        status = "Cool water"
+        severity = "Medium"
+        summary = f"NOAA {station_name} reports {round(water_temp, 1)} degrees F, which can make the bite slower."
+        advice = "Use slower retrieves and smaller adjustments before moving spots."
+    elif water_temp <= 65:
+        status = "Good bite range"
+        severity = "Low"
+        summary = f"NOAA {station_name} reports {round(water_temp, 1)} degrees F, a useful range for striped bass and halibut activity."
+        advice = "Prioritize moving tide, bait presence, and clean current edges because temperature is not the main concern."
+    elif water_temp <= 69:
+        status = "Warm edge"
+        severity = "Medium"
+        summary = f"NOAA {station_name} reports {round(water_temp, 1)} degrees F, near the warm edge for a strong daytime bite."
+        advice = "Fish earlier, deeper, or near stronger current where oxygen and bait movement are better."
+    else:
+        status = "Hot water stress"
+        severity = "High"
+        summary = f"NOAA {station_name} reports {round(water_temp, 1)} degrees F, warm enough to push fish toward cooler, oxygen-rich water."
+        advice = "Avoid slow shallow water; look for deeper channels, shade, current, or low-light periods."
+
+    return {"status": status, "severity": severity, "summary": summary, "advice": advice, "station": station}
+
+
 def build_no_catch_diagnosis(
     windows: list[dict],
     best: dict,
     tides: list[dict],
     hourly: list[dict],
     water_temp: float | None,
+    water_temp_station: dict | None,
     wind_observation: dict | None,
     moon: dict,
 ) -> dict:
@@ -273,6 +322,7 @@ def build_no_catch_diagnosis(
         for period in hourly
         if any(word.lower() in period.get("shortForecast", "").lower() for word in poor_weather_words)
     ]
+    water_signal = water_temperature_signal(water_temp, water_temp_station)
 
     if best_score < 50:
         causes.append(
@@ -318,22 +368,13 @@ def build_no_catch_diagnosis(
             )
         )
 
-    if water_temp is None:
+    if water_temp is not None and water_signal["severity"] in {"Medium", "High"}:
         causes.append(
             cause_entry(
-                "Water temperature signal missing",
-                "Low",
-                "The nearby NOAA station is not reporting water temperature right now.",
-                "Use tide, wind, and recent local reports more heavily until the sensor reports again.",
-            )
-        )
-    elif water_temp < 53 or water_temp > 67:
-        causes.append(
-            cause_entry(
-                "Water temperature may not fit the target bite",
-                "Medium",
-                f"Latest NOAA water temperature nearby is {round(water_temp, 1)} degrees F.",
-                "Slow down presentations in colder water; in warmer water, fish early, deeper, or where current improves oxygen.",
+                "Water temperature may be shaping the bite",
+                water_signal["severity"],
+                water_signal["summary"],
+                water_signal["advice"],
             )
         )
 
@@ -362,7 +403,7 @@ def build_no_catch_diagnosis(
             cause_entry(
                 "Technique or exact location mismatch",
                 "Medium",
-                f"Conditions look fishable: {best_tide} tide, {round(best_wind)} mph wind, and a {best_score}/100 score.",
+                f"Conditions look fishable: {best_tide} tide, {round(best_wind)} mph wind, {water_signal['status'].lower()}, and a {best_score}/100 score.",
                 "Change one variable at a time: bait size, depth, casting angle, retrieve speed, or move to current edges with birds or baitfish.",
             )
         )
@@ -382,7 +423,7 @@ def build_no_catch_diagnosis(
     top = max(causes, key=lambda item: severity_points.get(item["severity"], 0))
     status = "High no-catch risk" if risk >= 70 else "Moderate no-catch risk" if risk >= 45 else "Low no-catch risk"
     summary = (
-        f"The most likely reason for a blank trip is {top['name'].lower()}. "
+        f"The most likely blank-trip clue is {top['name'].lower()}. "
         f"This is based on NOAA tide movement, NWS hourly weather, observed water/wind data when available, and the moon phase."
     )
     return {
@@ -391,6 +432,7 @@ def build_no_catch_diagnosis(
         "topCause": top["name"],
         "summary": summary,
         "causes": causes[:5],
+        "waterTemperature": water_signal,
         "dataUsed": [
             "NOAA CO-OPS tide movement and tide direction",
             "NOAA/NWS hourly wind and weather forecast",
@@ -588,6 +630,7 @@ def build_forecast(day: dt.date) -> dict:
     extremes = []
     hourly = []
     water_temp = None
+    water_temp_station = None
     wind_observation = None
 
     try:
@@ -601,20 +644,25 @@ def build_forecast(day: dt.date) -> dict:
     except Exception as exc:
         errors.append(f"Hourly weather unavailable: {exc}")
 
-    for station in (STATION_ID, "9414290"):
+    for station in COOPS_OBSERVATION_STATIONS:
         try:
-            values = get_latest_coops_product("water_temperature", station)
+            values = get_latest_coops_product("water_temperature", station["id"])
             water_temp = parse_float(values[0].get("v")) if values else None
             if water_temp is not None:
+                water_temp_station = station
                 break
         except Exception:
             continue
 
-    for station in (STATION_ID, "9414290"):
+    for station in COOPS_OBSERVATION_STATIONS:
         try:
-            values = get_latest_coops_product("wind", station)
+            values = get_latest_coops_product("wind", station["id"])
             if values:
-                wind_observation = {"speed": parse_float(values[0].get("s")), "gust": parse_float(values[0].get("g"))}
+                wind_observation = {
+                    "speed": parse_float(values[0].get("s")),
+                    "gust": parse_float(values[0].get("g")),
+                    "station": station,
+                }
                 break
         except Exception:
             continue
@@ -624,7 +672,8 @@ def build_forecast(day: dt.date) -> dict:
 
     moon = moon_phase(day)
     windows, best = score_window(tides, hourly, water_temp, moon)
-    no_catch = build_no_catch_diagnosis(windows, best, tides, hourly, water_temp, wind_observation, moon)
+    water_signal = water_temperature_signal(water_temp, water_temp_station)
+    no_catch = build_no_catch_diagnosis(windows, best, tides, hourly, water_temp, water_temp_station, wind_observation, moon)
     score = best.get("score", 0)
     wind = best.get("wind", 0)
     alerts = []
@@ -641,9 +690,10 @@ def build_forecast(day: dt.date) -> dict:
         f"The moon is {moon['label'].lower()} with {moon['illumination']}% illumination.",
     ]
     if water_temp:
-        reasons.append(f"Latest NOAA water temperature nearby is {round(water_temp, 1)} degrees F.")
+        station_label = water_temp_station.get("name", "nearby station") if water_temp_station else "nearby station"
+        reasons.append(f"NOAA {station_label} water temperature is {round(water_temp, 1)} degrees F: {water_signal['status'].lower()}.")
     else:
-        reasons.append("Nearby NOAA water temperature is unavailable right now, so the score leans more on tide, wind, and light.")
+        reasons.append("Nearby NOAA water temperature is unavailable right now, so the app does not treat water temperature as a no-catch cause.")
 
     if water_temp is None:
         errors.append("Nearby NOAA water temperature observation unavailable.")
@@ -671,6 +721,8 @@ def build_forecast(day: dt.date) -> dict:
             for p in hourly
         ],
         "waterTemp": water_temp,
+        "waterTempStation": water_temp_station,
+        "waterTempSignal": water_signal,
         "windObservation": wind_observation,
         "moon": moon,
         "windows": windows,

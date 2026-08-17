@@ -468,6 +468,32 @@ svg {
   line-height: 1.35;
 }
 
+.water-signal {
+  background: #edf8fb;
+  border-radius: 14px;
+  padding: 13px;
+  margin-top: 12px;
+}
+
+.water-signal span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.water-signal strong {
+  display: block;
+  margin: 5px 0 6px;
+  font-size: 16px;
+}
+
+.water-signal p {
+  color: #31515a;
+  font-size: 13px;
+  line-height: 1.32;
+}
+
 .cause-list {
   display: grid;
   gap: 8px;

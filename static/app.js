@@ -372,6 +372,15 @@ function HomePage({ selected, setSelected, forecast, loading, settings }) {
       ),
       h("h3", null, noCatch ? noCatch.topCause : "Finding likely cause"),
       h("p", null, noCatch ? noCatch.summary : "The app will explain why a no-catch day may happen once NOAA data loads."),
+      noCatch && noCatch.waterTemperature
+        ? h(
+            "div",
+            { className: "water-signal" },
+            h("span", null, "Water temperature"),
+            h("strong", null, `${noCatch.waterTemperature.status}${forecast.waterTemp ? ` - ${Math.round(forecast.waterTemp)} F` : ""}`),
+            h("p", null, noCatch.waterTemperature.advice)
+          )
+        : null,
       h(
         "div",
         { className: "cause-list" },
