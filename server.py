@@ -291,6 +291,75 @@ def water_temperature_signal(water_temp: float | None, station: dict | None = No
     return {"status": status, "severity": severity, "summary": summary, "advice": advice, "station": station}
 
 
+def feeding_positioning_plan(best: dict, moon: dict, water_temp: float | None) -> dict:
+    illumination = int(moon.get("illumination") or 0)
+    waxing = "Waxing" in moon.get("label", "")
+    if waxing and 20 <= illumination <= 75:
+        moon_cue = (
+            f"With {illumination}% {moon['label'].lower()} light, use the moon as a positioning clue: "
+            "check slightly deeper water and depth transitions before leaving visible bait."
+        )
+    elif illumination <= 10:
+        moon_cue = (
+            f"With only {illumination}% moon illumination, very low light can reduce visual feeding efficiency. "
+            "Work slower and keep the lure or bait in the strike zone longer."
+        )
+    else:
+        moon_cue = (
+            f"The moon is {moon['label'].lower()} at {illumination}% illumination. Treat it as a search clue, "
+            "not a precise feeding clock."
+        )
+
+    temp_cue = "Temperature is not the main positioning clue right now."
+    if water_temp is not None and water_temp > 65:
+        temp_cue = "Warm water makes deeper, shaded, or stronger-current water more important because oxygen and comfort can improve there."
+    elif water_temp is not None and water_temp < 55:
+        temp_cue = "Cool water favors slower presentations near deeper edges, cover, and places where fish can ambush without chasing far."
+
+    return {
+        "title": "Where fish may be feeding when the surface looks quiet",
+        "summary": (
+            "No surface activity does not mean no feeding. Predators can sit below visible bait, on the outside edge, "
+            "down-current or downwind, or along the first drop-off where prey has fewer escape options."
+        ),
+        "moonCue": moon_cue,
+        "temperatureCue": temp_cue,
+        "researchNote": (
+            "Light and water clarity affect how deep visual predators can hunt. Largemouth bass studies also link lunar "
+            "illumination with activity and depth distribution, but they do not support fake-precision solunar timing."
+        ),
+        "sequence": [
+            {
+                "trigger": "Visible bait but no strikes",
+                "move": "Cast past the bait and retrieve through the outside edge first.",
+                "why": "Predators often intercept weak or separated prey on the edge instead of sitting in the middle of the school.",
+            },
+            {
+                "trigger": "Surface disturbance but no hookup",
+                "move": "Probe 1-2 depth zones under the activity before moving.",
+                "why": "Fish can feed vertically below bait without making obvious surface signs.",
+            },
+            {
+                "trigger": "Shallow flat or grass line nearby",
+                "move": "Work the closest transition: flat to drop-off, grass to clean edge, cover to open water.",
+                "why": "Transitions give fish access to prey plus a quick escape route to deeper or safer water.",
+            },
+            {
+                "trigger": "Wind or tide pushes bait one direction",
+                "move": "Fish the down-current or downwind side of the bait and cover.",
+                "why": "Disoriented prey often drifts that way, so predators can wait instead of chase.",
+            },
+            {
+                "trigger": "The surface looks dead",
+                "move": "Make one deliberate depth change before abandoning the spot.",
+                "why": "A deeper or slower presentation can reveal fish that are feeding out of sight.",
+            },
+        ],
+        "avoid": "Do not use the moon to claim fish will feed at an exact time. Use it to modify where and how deep you search.",
+        "bestCurrentClue": f"Today's best modeled window has {best.get('tide', 'unknown')} tide movement near {best.get('movement', '--')} ft/hr.",
+    }
+
+
 def build_no_catch_diagnosis(
     windows: list[dict],
     best: dict,
@@ -413,8 +482,8 @@ def build_no_catch_diagnosis(
             cause_entry(
                 "Fish may be feeding outside the visible spot",
                 "Low",
-                f"The moon is {moon['label'].lower()} with {moon['illumination']}% illumination, which can shift feeding timing.",
-                "Look for bait, birds, surface pushes, clearer water, and structure; do not stay too long in dead water.",
+                f"The moon is {moon['label'].lower()} with {moon['illumination']}% illumination, which is better used as a positioning clue than a feeding clock.",
+                "Work the outside edge of visible bait, then probe deeper and fish the nearest drop-off, cover edge, or current break before relocating.",
             )
         )
 
@@ -433,6 +502,7 @@ def build_no_catch_diagnosis(
         "summary": summary,
         "causes": causes[:5],
         "waterTemperature": water_signal,
+        "positioning": feeding_positioning_plan(best, moon, water_temp),
         "dataUsed": [
             "NOAA CO-OPS tide movement and tide direction",
             "NOAA/NWS hourly wind and weather forecast",

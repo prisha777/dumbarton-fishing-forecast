@@ -552,6 +552,155 @@ svg {
   color: #24513e;
 }
 
+.clues-shell {
+  background: #f1efea;
+}
+
+.clues-hero {
+  min-height: 180px;
+  border-radius: 18px;
+  background: var(--green);
+  padding: 22px;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 10px;
+}
+
+.clues-hero h2 {
+  font-size: 42px;
+  line-height: 0.95;
+  margin-bottom: 10px;
+}
+
+.clues-hero p:last-child,
+.clue-panel p,
+.clue-grid p,
+.clue-caveat p {
+  color: #414640;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.clues-hero > strong {
+  align-self: flex-start;
+  max-width: 112px;
+  border-radius: 999px;
+  background: #111;
+  color: #fff;
+  padding: 9px 11px;
+  font-size: 12px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.clue-panel,
+.clue-caveat {
+  background: #fff;
+  border-radius: 18px;
+  padding: 16px;
+  margin-top: 10px;
+}
+
+.clue-panel h3 {
+  font-size: 22px;
+  line-height: 1.05;
+  margin-bottom: 10px;
+}
+
+.clue-panel small {
+  display: block;
+  margin-top: 12px;
+  color: #315346;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.bait-sequence {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.bait-sequence .section-head {
+  margin: 0 0 2px;
+}
+
+.bait-sequence article {
+  display: flex;
+  gap: 13px;
+  background: #fff8df;
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.bait-sequence article > strong {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--sun);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.bait-sequence h3 {
+  font-size: 16px;
+  margin-bottom: 5px;
+}
+
+.bait-sequence p {
+  color: #303331;
+  font-size: 15px;
+  line-height: 1.32;
+  margin-bottom: 7px;
+}
+
+.bait-sequence small {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.32;
+}
+
+.clue-grid {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.clue-grid article {
+  background: #edf8fb;
+  border-radius: 16px;
+  padding: 15px;
+}
+
+.clue-grid article:nth-child(2) {
+  background: #f4e9df;
+}
+
+.clue-grid article:nth-child(3) {
+  background: var(--violet);
+}
+
+.clue-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.clue-grid strong,
+.clue-caveat strong {
+  display: block;
+  font-size: 17px;
+  margin-bottom: 8px;
+}
+
+.clue-causes {
+  margin-top: 12px;
+}
+
 .species-list {
   display: grid;
   gap: 8px;
@@ -1278,12 +1427,19 @@ svg {
 }
 
 .bottom-nav .add {
-  width: 46px;
-  height: 46px;
-  border-radius: 50%;
+  width: 58px;
+  height: 58px;
+  border-radius: 18px;
   background: var(--sun);
   justify-self: center;
   color: #111;
+  align-content: center;
+  gap: 1px;
+}
+
+.bottom-nav .add span {
+  font-size: 10px;
+  font-weight: 800;
 }
 
 @media (min-width: 760px) {

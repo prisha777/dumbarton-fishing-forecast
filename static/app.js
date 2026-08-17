@@ -303,7 +303,6 @@ function HomePage({ selected, setSelected, forecast, loading, settings }) {
     const bPreferred = settings.preferredSpecies.includes(b.name) ? 0 : 1;
     return aPreferred - bPreferred;
   });
-  const noCatch = forecast && forecast.noCatch;
 
   return [
     h(
@@ -359,42 +358,6 @@ function HomePage({ selected, setSelected, forecast, loading, settings }) {
       h("article", null, h("span", null, "Current"), h("strong", null, forecast && forecast.best && forecast.best.movement ? `${forecast.best.movement} ft/hr` : "--")),
       h("article", null, h("span", null, "Moon"), h("strong", null, `${(forecast && forecast.moon && forecast.moon.illumination) || "--"}%`)),
       h("article", null, h("span", null, "Top tide"), h("strong", null, (forecast && forecast.best && forecast.best.tide) || "--"))
-    ),
-    h(
-      "section",
-      { className: "no-catch-panel", key: "home-no-catch" },
-      h("div", { className: "section-head compact" }, h("h2", null, "No-catch clues"), h("span", null, "real data")),
-      h(
-        "div",
-        { className: "no-catch-summary" },
-        h("div", null, h("span", null, "Blank-trip risk"), h("strong", null, noCatch ? `${noCatch.risk}/100` : "--")),
-        h("p", null, noCatch ? noCatch.status : "Checking tide, wind, water, weather, and moon signals.")
-      ),
-      h("h3", null, noCatch ? noCatch.topCause : "Finding likely cause"),
-      h("p", null, noCatch ? noCatch.summary : "The app will explain why a no-catch day may happen once NOAA data loads."),
-      noCatch && noCatch.waterTemperature
-        ? h(
-            "div",
-            { className: "water-signal" },
-            h("span", null, "Water temperature"),
-            h("strong", null, `${noCatch.waterTemperature.status}${forecast.waterTemp ? ` - ${Math.round(forecast.waterTemp)} F` : ""}`),
-            h("p", null, noCatch.waterTemperature.advice)
-          )
-        : null,
-      h(
-        "div",
-        { className: "cause-list" },
-        ...((noCatch && noCatch.causes) || []).slice(0, 3).map((cause) =>
-          h(
-            "article",
-            { key: cause.name },
-            h("span", { className: `severity ${cause.severity.toLowerCase()}` }, cause.severity),
-            h("strong", null, cause.name),
-            h("p", null, cause.evidence),
-            h("small", null, cause.fix)
-          )
-        )
-      )
     ),
     h("section", { className: "section-head", key: "home-species-title" }, h("h2", null, "Species"), h("span", null, "preferred first")),
     h(
@@ -470,6 +433,104 @@ function ExplorePage({ settings }) {
       { className: "feed-grid", key: "explore-feed" },
       ...filtered.map((item) => h(ExploreCard, { item, key: item.title }))
     )
+  ];
+}
+
+function NoCatchPage({ forecast, loading }) {
+  const noCatch = forecast && forecast.noCatch;
+  const positioning = noCatch && noCatch.positioning;
+  const water = noCatch && noCatch.waterTemperature;
+  const steps = (positioning && positioning.sequence) || [];
+
+  return [
+    h(
+      "section",
+      { className: "topbar clues-top", key: "clues-top" },
+      h("div", null, h("p", { className: "eyebrow" }, "No-catch clues"), h("h1", null, "Find the bite")),
+      h("div", { className: "avatar" }, h(Icon, { name: "fish" }))
+    ),
+    h(
+      "section",
+      { className: "clues-hero", key: "clues-hero" },
+      h(
+        "div",
+        null,
+        h("p", { className: "eyebrow" }, "Blank-trip risk"),
+        h("h2", null, loading ? "Reading NOAA..." : noCatch ? `${noCatch.risk}/100` : "--"),
+        h("p", null, noCatch ? noCatch.status : "Checking tide, wind, water temperature, weather, and moon clues.")
+      ),
+      h("strong", null, noCatch ? noCatch.topCause : "Loading")
+    ),
+    h(
+      "section",
+      { className: "clue-panel", key: "clue-panel" },
+      h("div", { className: "section-head compact" }, h("h2", null, "What it means"), h("span", null, "not surface-only")),
+      h("h3", null, positioning ? positioning.title : "Where fish may be feeding"),
+      h("p", null, positioning ? positioning.summary : "Fish can feed outside obvious surface activity. The app will explain where to check once data loads."),
+      positioning ? h("small", null, positioning.bestCurrentClue) : null
+    ),
+    h(
+      "section",
+      { className: "bait-sequence", key: "bait-sequence" },
+      h("div", { className: "section-head compact" }, h("h2", null, "Visible bait plan"), h("span", null, "do this order")),
+      ...(steps.length
+        ? steps.map((step, index) =>
+            h(
+              "article",
+              { key: step.trigger },
+              h("strong", null, index + 1),
+              h("div", null, h("h3", null, step.trigger), h("p", null, step.move), h("small", null, step.why))
+            )
+          )
+        : [h("article", { key: "loading" }, h("strong", null, "1"), h("div", null, h("h3", null, "Loading plan"), h("p", null, "Checking real conditions."), h("small", null, "The sequence will appear when the forecast loads.")))])
+    ),
+    h(
+      "section",
+      { className: "clue-grid", key: "clue-grid" },
+      h(
+        "article",
+        null,
+        h("span", null, "Moon"),
+        h("strong", null, forecast && forecast.moon ? `${forecast.moon.illumination}% ${forecast.moon.label}` : "--"),
+        h("p", null, positioning ? positioning.moonCue : "Use the moon as a positioning clue, not an exact feeding timer.")
+      ),
+      h(
+        "article",
+        null,
+        h("span", null, "Water"),
+        h("strong", null, water ? `${water.status}${forecast && forecast.waterTemp ? ` - ${Math.round(forecast.waterTemp)} F` : ""}` : "--"),
+        h("p", null, water ? water.advice : "Water temperature will be used when a nearby NOAA station reports it.")
+      ),
+      h(
+        "article",
+        null,
+        h("span", null, "Research note"),
+        h("strong", null, "No fake timing"),
+        h("p", null, positioning ? positioning.researchNote : "Light, clarity, cover, and depth shape feeding more than a simple moon table.")
+      )
+    ),
+    h(
+      "section",
+      { className: "cause-list clue-causes", key: "clue-causes" },
+      ...((noCatch && noCatch.causes) || []).map((cause) =>
+        h(
+          "article",
+          { key: cause.name },
+          h("span", { className: `severity ${cause.severity.toLowerCase()}` }, cause.severity),
+          h("strong", null, cause.name),
+          h("p", null, cause.evidence),
+          h("small", null, cause.fix)
+        )
+      )
+    ),
+    positioning
+      ? h(
+          "section",
+          { className: "clue-caveat", key: "clue-caveat" },
+          h("strong", null, "Caveat"),
+          h("p", null, positioning.avoid)
+        )
+      : null
   ];
 }
 
@@ -656,13 +717,13 @@ function ProfilePage({ settings, setSettings }) {
         "article",
         null,
         h("h3", null, "Start on Home"),
-        h("p", null, "Use the fishing score, best time window, no-catch clues, tide chart, wind chart, and species tips to decide whether today is worth fishing.")
+        h("p", null, "Use the fishing score, best time window, tide chart, wind chart, and species tips to decide whether today is worth fishing.")
       ),
       h(
         "article",
         null,
-        h("h3", null, "Use No-catch clues after a blank trip"),
-        h("p", null, "The app checks NOAA tide movement, NWS wind and weather, water temperature when available, and moon timing to explain likely reasons nothing bit.")
+        h("h3", null, "Use Clues after a blank trip"),
+        h("p", null, "Clues explains where fish may be feeding when the obvious surface activity does not produce strikes, using tide, wind, water temperature, and moon positioning clues.")
       ),
       h(
         "article",
@@ -678,11 +739,11 @@ function ProfilePage({ settings, setSettings }) {
       ),
       h("div", { className: "faq-title" }, "FAQs"),
       h("details", null, h("summary", null, "What does the fishing score mean?"), h("p", null, "It is a 0 to 100 estimate based on tide movement, wind, water temperature when available, moon phase, and daylight timing.")),
-      h("details", null, h("summary", null, "Why did I not catch anything?"), h("p", null, "Open Home and read No-catch clues. It points to likely causes such as slack current, strong wind, water temperature mismatch, changing weather, or technique and location fit.")),
+      h("details", null, h("summary", null, "Why did I not catch anything?"), h("p", null, "Open Clues. Start with the visible-bait plan: fish the outside edge, probe deeper, work the nearest drop-off or cover transition, then relocate only after changing depth.")),
       h("details", null, h("summary", null, "How often does the app update?"), h("p", null, "Weather and alerts can refresh about every 10 to 20 minutes. Tide predictions are cached for about 1 hour.")),
       h("details", null, h("summary", null, "Is this a safety guarantee?"), h("p", null, "No. It is a decision aid. Always look at the water, check official warnings, and avoid fishing if conditions feel unsafe.")),
       h("details", null, h("summary", null, "Why does water temperature sometimes show blank?"), h("p", null, "Some NOAA stations do not report every product at all times. When water temperature is missing, the app leans more on tide, wind, and light.")),
-      h("details", null, h("summary", null, "Which tab should I use first?"), h("p", null, "Use Home for today’s fishing decision, Alerts for safety, Explore for learning, and Profile for help and app settings."))
+      h("details", null, h("summary", null, "Which tab should I use first?"), h("p", null, "Use Home for today’s fishing decision, Clues after a no-catch trip, Alerts for safety, Explore for learning, and Profile for help and app settings."))
     )
   ];
 }
@@ -693,7 +754,7 @@ function BottomNav({ activeTab, setActiveTab }) {
     { className: "bottom-nav", "aria-label": "Main navigation" },
     h("button", { className: activeTab === "home" ? "selected" : "", onClick: () => setActiveTab("home") }, h(Icon, { name: "home" }), h("span", null, "Home")),
     h("button", { className: activeTab === "explore" ? "selected" : "", onClick: () => setActiveTab("explore") }, h(Icon, { name: "compass" }), h("span", null, "Explore")),
-    h("button", { className: "add", onClick: () => setActiveTab("explore"), "aria-label": "Open learning feed" }, h(Icon, { name: "plus" })),
+    h("button", { className: activeTab === "clues" ? "add selected" : "add", onClick: () => setActiveTab("clues"), "aria-label": "Clues" }, h(Icon, { name: "fish" }), h("span", null, "Clues")),
     h("button", { className: activeTab === "alerts" ? "selected" : "", onClick: () => setActiveTab("alerts") }, h(Icon, { name: "bell" }), h("span", null, "Alerts")),
     h("button", { className: activeTab === "profile" ? "selected" : "", onClick: () => setActiveTab("profile") }, h(Icon, { name: "user" }), h("span", null, "Profile"))
   );
@@ -746,9 +807,11 @@ function App() {
 
   return h(
     "main",
-    { className: `phone-shell ${activeTab === "explore" ? "explore-shell" : ""} ${activeTab === "alerts" ? "alerts-shell" : ""}` },
+    { className: `phone-shell ${activeTab === "explore" ? "explore-shell" : ""} ${activeTab === "alerts" ? "alerts-shell" : ""} ${activeTab === "clues" ? "clues-shell" : ""}` },
     activeTab === "explore"
       ? h(ExplorePage, { key: "explore-page", settings })
+      : activeTab === "clues"
+        ? h(NoCatchPage, { key: "clues-page", forecast, loading })
       : activeTab === "alerts"
         ? h(AlertsPage, { key: "alerts-page", selected, settings })
         : activeTab === "profile"
