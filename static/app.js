@@ -4,6 +4,17 @@ const h = React.createElement;
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const today = new Date();
 const feedFilters = ["All", "Lakes", "Fishing", "Weather", "Ecology", "Laws", "NOAA"];
+const speciesOptions = ["Striped bass", "California halibut", "White sturgeon"];
+const interestOptions = ["Fishing", "Weather", "Ecology", "Lakes", "Laws", "NOAA"];
+const defaultSettings = {
+  displayName: "Angler",
+  spotName: "Dumbarton Bridge",
+  experience: "Beginner",
+  units: "US customary",
+  alertSensitivity: "Normal",
+  preferredSpecies: ["Striped bass", "California halibut"],
+  learningInterests: ["Fishing", "Weather", "NOAA"],
+};
 const exploreFeed = [
   {
     title: "Lake ecology field notes",
@@ -113,7 +124,91 @@ const exploreFeed = [
     source: "EPA Enforcement",
     summary: "See how permits, dredge-and-fill rules, wetlands, and enforcement connect back to fishable water.",
   },
+  {
+    title: "Harmful algal blooms in lakes",
+    tag: "Lakes",
+    tone: "pink",
+    size: "short",
+    type: "EPA webcast",
+    image: "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=900&q=82",
+    credit: "Lake water photo",
+    url: "https://www.epa.gov/watershedacademy/nitrogen-and-phosphorus-pollution-and-harmful-algal-blooms-lakes",
+    source: "EPA Watershed Academy",
+    summary: "Understand how nitrogen and phosphorus pollution can feed harmful algal blooms that affect fishing and swimming.",
+  },
+  {
+    title: "NOAA fish habitat restoration",
+    tag: "Ecology",
+    tone: "green",
+    size: "wide",
+    type: "Habitat story",
+    image: "https://images.unsplash.com/photo-1468581264429-2548ef9eb732?auto=format&fit=crop&w=1200&q=82",
+    credit: "Restoration photo",
+    url: "https://www.fisheries.noaa.gov/feature-story/restoring-habitat-and-engaging-recreational-community-through-national-fish-habitat",
+    source: "NOAA Fisheries",
+    summary: "See how NOAA-supported habitat work involves anglers and local communities in restoring fish habitat.",
+  },
+  {
+    title: "Green sturgeon science",
+    tag: "Fishing",
+    tone: "blue",
+    size: "short",
+    type: "Species science",
+    image: "https://images.unsplash.com/photo-1524704654690-b56c05c78a00?auto=format&fit=crop&w=900&q=82",
+    credit: "Fish photo",
+    url: "https://www.fisheries.noaa.gov/species/green-sturgeon/science",
+    source: "NOAA Fisheries",
+    summary: "Learn why sturgeon need careful handling and how fisheries science studies catch-and-release impacts.",
+  },
+  {
+    title: "Rip current basics",
+    tag: "Weather",
+    tone: "yellow",
+    size: "short",
+    type: "Safety guide",
+    image: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=82",
+    credit: "Surf photo",
+    url: "https://oceanservice.noaa.gov/facts/ripcurrent.html",
+    source: "NOAA Ocean Service",
+    summary: "A simple NOAA explainer on rip currents, why they differ from rip tides, and what to do if caught.",
+  },
+  {
+    title: "NOAA fisheries science data",
+    tag: "NOAA",
+    tone: "violet",
+    size: "wide",
+    type: "Research hub",
+    image: "https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=1200&q=82",
+    credit: "Ocean data photo",
+    url: "https://www.fisheries.noaa.gov/science-and-data",
+    source: "NOAA Fisheries",
+    summary: "Explore NOAA science behind sustainable fisheries, protected species, habitats, and ocean stewardship.",
+  },
+  {
+    title: "Atlantic striped bass profile",
+    tag: "Fishing",
+    tone: "clay",
+    size: "short",
+    type: "Species profile",
+    image: "https://images.unsplash.com/photo-1574781330855-d0db8cc6a79c?auto=format&fit=crop&w=900&q=82",
+    credit: "Striped fish photo",
+    url: "https://www.fisheries.noaa.gov/species/atlantic-striped-bass",
+    source: "NOAA Fisheries",
+    summary: "Use NOAA’s profile to learn about striped bass management, harvest rules, and sustainability context.",
+  },
 ];
+
+function loadSettings() {
+  try {
+    return { ...defaultSettings, ...(JSON.parse(localStorage.getItem("dumbartonFishingSettings") || "{}")) };
+  } catch {
+    return defaultSettings;
+  }
+}
+
+function saveSettings(settings) {
+  localStorage.setItem("dumbartonFishingSettings", JSON.stringify(settings));
+}
 
 function isoDate(date) {
   return date.toISOString().slice(0, 10);
@@ -200,15 +295,20 @@ function ScoreRing({ score }) {
   );
 }
 
-function HomePage({ selected, setSelected, forecast, loading }) {
+function HomePage({ selected, setSelected, forecast, loading, settings }) {
   const days = weekDays();
   const score = forecast ? forecast.score : 0;
+  const species = ((forecast && forecast.species) || []).slice().sort((a, b) => {
+    const aPreferred = settings.preferredSpecies.includes(a.name) ? 0 : 1;
+    const bPreferred = settings.preferredSpecies.includes(b.name) ? 0 : 1;
+    return aPreferred - bPreferred;
+  });
 
   return [
     h(
       "section",
       { className: "topbar", key: "home-top" },
-      h("div", null, h("p", { className: "eyebrow" }, "Dumbarton Bridge"), h("h1", null, "Fishing today")),
+      h("div", null, h("p", { className: "eyebrow" }, settings.spotName || "Dumbarton Bridge"), h("h1", null, "Fishing today")),
       h("div", { className: "avatar" }, h(Icon, { name: "fish" }))
     ),
     h(
@@ -259,16 +359,16 @@ function HomePage({ selected, setSelected, forecast, loading }) {
       h("article", null, h("span", null, "Moon"), h("strong", null, `${(forecast && forecast.moon && forecast.moon.illumination) || "--"}%`)),
       h("article", null, h("span", null, "Top tide"), h("strong", null, (forecast && forecast.best && forecast.best.tide) || "--"))
     ),
-    h("section", { className: "section-head", key: "home-species-title" }, h("h2", null, "Species"), h("span", null, "Local targets")),
+    h("section", { className: "section-head", key: "home-species-title" }, h("h2", null, "Species"), h("span", null, "preferred first")),
     h(
       "section",
       { className: "species-list", key: "home-species" },
-      ...((forecast && forecast.species) || []).map((fish) =>
+      ...species.map((fish) =>
         h(
           "article",
-          { key: fish.name },
+          { className: settings.preferredSpecies.includes(fish.name) ? "preferred" : "", key: fish.name },
           h("div", null, h("h3", null, fish.name), h("p", null, fish.note), h("small", null, fish.bait)),
-          h("span", null, fish.activity)
+          h("span", null, settings.preferredSpecies.includes(fish.name) ? `Preferred - ${fish.activity}` : fish.activity)
         )
       )
     ),
@@ -293,8 +393,8 @@ function ExploreCard({ item }) {
   );
 }
 
-function ExplorePage() {
-  const [filter, setFilter] = useState("All");
+function ExplorePage({ settings }) {
+  const [filter, setFilter] = useState(settings.learningInterests[0] || "All");
   const filtered = filter === "All" ? exploreFeed : exploreFeed.filter((item) => item.tag === filter);
 
   return [
@@ -307,8 +407,8 @@ function ExplorePage() {
     h(
       "section",
       { className: "explore-search", key: "explore-search" },
-      h("span", null, "AI-curated free learning"),
-      h("button", { onClick: () => setFilter("NOAA") }, "NOAA + EPA")
+      h("span", null, `${filtered.length} resources for ${filter}`),
+      h("button", { onClick: () => setFilter(settings.learningInterests[0] || "NOAA") }, "My topics")
     ),
     h(
       "section",
@@ -380,7 +480,7 @@ function AlertMap({ points = [], center }) {
   );
 }
 
-function AlertsPage({ selected }) {
+function AlertsPage({ selected, settings }) {
   const [scan, setScan] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -392,7 +492,12 @@ function AlertsPage({ selected }) {
       .finally(() => setLoading(false));
   }, [selected]);
 
-  const anomalies = (scan && scan.anomalies) || [];
+  const rawAnomalies = (scan && scan.anomalies) || [];
+  const anomalies = rawAnomalies.filter((item) => {
+    if (settings.alertSensitivity === "Cautious") return true;
+    if (settings.alertSensitivity === "Relaxed") return severityClass(item.severity) !== "low";
+    return item.kind !== "Normal";
+  });
   const points = (scan && scan.points) || [];
 
   return [
@@ -405,7 +510,7 @@ function AlertsPage({ selected }) {
     h(
       "section",
       { className: `alert-status ${severityClass(scan && scan.status)}`, key: "alert-status" },
-      h("div", null, h("p", { className: "eyebrow" }, "AI geospatial check"), h("h2", null, loading ? "Scanning NOAA..." : `${scan.status} conditions`), h("p", null, scan ? scan.summary : "Comparing nearby NOAA/NWS grid points for weather outliers.")),
+      h("div", null, h("p", { className: "eyebrow" }, `${settings.alertSensitivity} alerts`), h("h2", null, loading ? "Scanning NOAA..." : `${scan.status} conditions`), h("p", null, scan ? scan.summary : "Comparing nearby NOAA/NWS grid points for weather outliers.")),
       h("strong", null, loading ? "--" : anomalies.length)
     ),
     h(AlertMap, { key: "alert-map", points, center: scan && scan.center }),
@@ -443,7 +548,19 @@ function AlertsPage({ selected }) {
   ];
 }
 
-function ProfilePage() {
+function ProfilePage({ settings, setSettings }) {
+  const updateSetting = (key, value) => {
+    setSettings((current) => ({ ...current, [key]: value }));
+  };
+  const toggleArraySetting = (key, value) => {
+    setSettings((current) => {
+      const existing = current[key] || [];
+      const next = existing.includes(value) ? existing.filter((item) => item !== value) : [...existing, value];
+      return { ...current, [key]: next.length ? next : [value] };
+    });
+  };
+  const resetSettings = () => setSettings(defaultSettings);
+
   return [
     h(
       "section",
@@ -454,17 +571,45 @@ function ProfilePage() {
     h(
       "section",
       { className: "profile-card", key: "profile-card" },
-      h("p", { className: "eyebrow" }, "Default area"),
-      h("h2", null, "Dumbarton Bridge"),
-      h("p", null, "Forecasts, alerts, and species tips are tuned for Bay shoreline fishing near the bridge.")
+      h("p", { className: "eyebrow" }, `Hello, ${settings.displayName || "Angler"}`),
+      h("h2", null, settings.spotName || "Dumbarton Bridge"),
+      h("p", null, "Customize the app so forecast cards, fish tips, alerts, and learning resources match how you fish.")
+    ),
+    h(
+      "section",
+      { className: "settings-panel", key: "settings-panel" },
+      h("div", { className: "section-head compact" }, h("h2", null, "Customize"), h("span", null, "saved here")),
+      h("label", null, h("span", null, "Display name"), h("input", { value: settings.displayName, onChange: (event) => updateSetting("displayName", event.target.value), placeholder: "Angler" })),
+      h("label", null, h("span", null, "Fishing spot label"), h("input", { value: settings.spotName, onChange: (event) => updateSetting("spotName", event.target.value), placeholder: "Dumbarton Bridge" })),
+      h(
+        "label",
+        null,
+        h("span", null, "Experience level"),
+        h("select", { value: settings.experience, onChange: (event) => updateSetting("experience", event.target.value) }, h("option", null, "Beginner"), h("option", null, "Intermediate"), h("option", null, "Experienced"))
+      ),
+      h(
+        "label",
+        null,
+        h("span", null, "Alert sensitivity"),
+        h("select", { value: settings.alertSensitivity, onChange: (event) => updateSetting("alertSensitivity", event.target.value) }, h("option", null, "Cautious"), h("option", null, "Normal"), h("option", null, "Relaxed"))
+      ),
+      h(
+        "label",
+        null,
+        h("span", null, "Units"),
+        h("select", { value: settings.units, onChange: (event) => updateSetting("units", event.target.value) }, h("option", null, "US customary"), h("option", null, "Metric soon"))
+      ),
+      h("div", { className: "choice-group" }, h("strong", null, "Preferred fish"), h("p", null, "These appear first on Home."), ...speciesOptions.map((name) => h("button", { className: settings.preferredSpecies.includes(name) ? "active" : "", key: name, onClick: () => toggleArraySetting("preferredSpecies", name) }, name))),
+      h("div", { className: "choice-group" }, h("strong", null, "Learning topics"), h("p", null, "Explore opens with your first selected topic."), ...interestOptions.map((name) => h("button", { className: settings.learningInterests.includes(name) ? "active" : "", key: name, onClick: () => toggleArraySetting("learningInterests", name) }, name))),
+      h("button", { className: "reset-button", onClick: resetSettings }, "Reset defaults")
     ),
     h(
       "section",
       { className: "profile-list", key: "profile-list" },
-      h("article", null, h("strong", null, "Preferred species"), h("span", null, "Striped bass, halibut, sturgeon")),
-      h("article", null, h("strong", null, "Alert style"), h("span", null, "Plain language with NOAA/NWS sources")),
-      h("article", null, h("strong", null, "Accessibility"), h("span", null, "Large labels, low clutter, calm colors")),
-      h("article", null, h("strong", null, "Data sources"), h("span", null, "NOAA tides, NWS weather, geospatial scan"))
+      h("article", null, h("strong", null, "Preferred species"), h("span", null, settings.preferredSpecies.join(", "))),
+      h("article", null, h("strong", null, "Alert style"), h("span", null, `${settings.alertSensitivity} plain-language NOAA/NWS alerts`)),
+      h("article", null, h("strong", null, "Learning interests"), h("span", null, settings.learningInterests.join(", "))),
+      h("article", null, h("strong", null, "Data sources"), h("span", null, "NOAA tides, NWS weather, EPA water resources, NOAA Fisheries, geospatial scan"))
     ),
     h(
       "section",
@@ -541,6 +686,7 @@ function App() {
   const [forecast, setForecast] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("home");
+  const [settings, setSettings] = useState(loadSettings);
 
   useEffect(() => {
     setLoading(true);
@@ -550,16 +696,20 @@ function App() {
       .finally(() => setLoading(false));
   }, [selected]);
 
+  useEffect(() => {
+    saveSettings(settings);
+  }, [settings]);
+
   return h(
     "main",
     { className: `phone-shell ${activeTab === "explore" ? "explore-shell" : ""} ${activeTab === "alerts" ? "alerts-shell" : ""}` },
     activeTab === "explore"
-      ? h(ExplorePage, { key: "explore-page" })
+      ? h(ExplorePage, { key: "explore-page", settings })
       : activeTab === "alerts"
-        ? h(AlertsPage, { key: "alerts-page", selected })
+        ? h(AlertsPage, { key: "alerts-page", selected, settings })
         : activeTab === "profile"
-          ? h(ProfilePage, { key: "profile-page" })
-          : h(HomePage, { key: "home-page", selected, setSelected, forecast, loading }),
+          ? h(ProfilePage, { key: "profile-page", settings, setSettings })
+          : h(HomePage, { key: "home-page", selected, setSelected, forecast, loading, settings }),
     h(BottomNav, { activeTab, setActiveTab })
   );
 }

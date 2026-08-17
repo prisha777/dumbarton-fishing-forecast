@@ -435,6 +435,11 @@ svg {
   gap: 16px;
 }
 
+.species-list article.preferred {
+  background: #fff8df;
+  box-shadow: inset 0 0 0 2px rgba(255, 195, 61, 0.7);
+}
+
 .species-list h3 {
   font-size: 16px;
   margin-bottom: 7px;
@@ -943,6 +948,84 @@ svg {
   color: var(--muted);
   font-size: 14px;
   line-height: 1.35;
+}
+
+.settings-panel {
+  background: #fff;
+  border-radius: 18px;
+  padding: 16px;
+  margin-top: 10px;
+}
+
+.settings-panel label {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.settings-panel label span {
+  color: #4c4f4b;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.settings-panel input,
+.settings-panel select {
+  width: 100%;
+  min-height: 46px;
+  border: 0;
+  border-radius: 12px;
+  background: #f5f2eb;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  padding: 0 13px;
+}
+
+.choice-group {
+  border-radius: 14px;
+  background: #f5f2eb;
+  padding: 14px;
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.choice-group strong,
+.choice-group p {
+  flex: 0 0 100%;
+}
+
+.choice-group strong {
+  font-size: 16px;
+}
+
+.choice-group p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.choice-group button,
+.reset-button {
+  min-height: 40px;
+  border-radius: 999px;
+  background: #fff;
+  padding: 0 13px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.choice-group button.active {
+  background: var(--sun);
+}
+
+.reset-button {
+  width: 100%;
+  margin-top: 12px;
+  background: #111;
+  color: #fff;
 }
 
 .file-card {
