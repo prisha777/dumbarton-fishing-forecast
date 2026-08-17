@@ -47,6 +47,97 @@ button {
   padding: 0 8px 10px;
 }
 
+.splash-shell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  min-height: 100vh;
+}
+
+.splash-hero {
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 248, 223, 0.94), rgba(189, 230, 241, 0.84)),
+    url("https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=82") center / cover;
+  padding: 26px 20px;
+}
+
+.splash-hero .avatar {
+  margin-bottom: 18px;
+}
+
+.splash-hero h1 {
+  max-width: 300px;
+  margin-bottom: 12px;
+}
+
+.splash-hero p:last-child {
+  color: #3e4741;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.spot-form,
+.spot-examples {
+  border-radius: 18px;
+  background: #fff;
+  padding: 16px;
+}
+
+.spot-form label {
+  display: grid;
+  gap: 8px;
+}
+
+.spot-form span,
+.spot-examples strong {
+  color: #4c4f4b;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.spot-form input {
+  width: 100%;
+  min-height: 50px;
+  border: 0;
+  border-radius: 14px;
+  background: #f5f2eb;
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  padding: 0 14px;
+}
+
+.spot-form button {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 14px;
+  background: #111;
+  color: #fff;
+  font-weight: 800;
+  margin-top: 12px;
+}
+
+.spot-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.spot-examples strong {
+  flex: 0 0 100%;
+}
+
+.spot-examples button {
+  min-height: 38px;
+  border-radius: 999px;
+  background: #f5f2eb;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .eyebrow {
   margin: 0 0 3px;
   color: var(--muted);
@@ -1074,20 +1165,18 @@ svg {
   border-radius: 16px;
 }
 
+.map-loading {
+  height: 172px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #e8f7fb, #f7f4ed);
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .map-sky {
   fill: url("#mapSky");
-}
-
-.map-sun circle {
-  fill: var(--sun);
-  stroke: #111;
-  stroke-width: 2;
-}
-
-.map-sun path {
-  stroke: #111;
-  stroke-width: 2;
-  stroke-linecap: round;
 }
 
 .map-water {
@@ -1113,7 +1202,7 @@ svg {
   stroke-width: 2;
 }
 
-.map-dot.bridge {
+.map-dot.primary {
   fill: var(--sun);
 }
 

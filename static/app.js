@@ -8,7 +8,8 @@ const speciesOptions = ["Striped bass", "California halibut", "White sturgeon", 
 const interestOptions = ["Fishing", "Weather", "Ecology", "Lakes", "Laws", "NOAA"];
 const defaultSettings = {
   displayName: "Angler",
-  spotName: "Dumbarton Bridge",
+  spotName: "",
+  spotReady: false,
   experience: "Beginner",
   units: "US customary",
   alertSensitivity: "Normal",
@@ -207,7 +208,11 @@ function loadSettings() {
 }
 
 function saveSettings(settings) {
-  localStorage.setItem("dumbartonFishingSettings", JSON.stringify(settings));
+  try {
+    localStorage.setItem("dumbartonFishingSettings", JSON.stringify(settings));
+  } catch {
+    // Some embedded or privacy-restricted browsers block localStorage.
+  }
 }
 
 function useMetric(settings) {
@@ -239,6 +244,10 @@ function localizeReasonText(text, settings) {
     .replace(/water temperature is ([0-9.]+) degrees F/g, (_, value) => `water temperature is ${Math.round((Number(value) - 32) * 5 / 9)} degrees C`);
 }
 
+function spotQuery(settings) {
+  return encodeURIComponent((settings.spotName || "Dumbarton Bridge").trim());
+}
+
 function isoDate(date) {
   return date.toISOString().slice(0, 10);
 }
@@ -264,7 +273,7 @@ function Icon({ name }) {
   return h("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, h("path", { d: paths[name] }));
 }
 
-function TideChart({ data }) {
+function TideChart({ data, tidalAvailable = true }) {
   const points = useMemo(() => {
     if (!data || !data.length) return "";
     const min = Math.min(...data.map((d) => d.height));
@@ -281,7 +290,7 @@ function TideChart({ data }) {
   return h(
     "div",
     { className: "chart tide-card" },
-    h("div", { className: "chart-head" }, h("span", null, "Tide curve"), h("strong", null, "MLLW ft")),
+    h("div", { className: "chart-head" }, h("span", null, tidalAvailable ? "Tide curve" : "Daily pattern"), h("strong", null, tidalAvailable ? "MLLW ft" : "proxy")),
     h(
       "svg",
       { viewBox: "0 0 300 132", role: "img", "aria-label": "NOAA tide prediction chart" },
@@ -324,6 +333,42 @@ function ScoreRing({ score }) {
   );
 }
 
+function SplashPage({ settings, setSettings }) {
+  const [spot, setSpot] = useState(settings.spotName || "");
+  const saveSpot = (event) => {
+    event.preventDefault();
+    const nextSpot = spot.trim();
+    if (!nextSpot) return;
+    setSettings((current) => ({ ...current, spotName: nextSpot, spotReady: true }));
+  };
+  const examples = ["Dumbarton Bridge", "Lake Tahoe", "Monterey Bay", "Lake Lanier", "Galveston Pier"];
+
+  return h(
+    "main",
+    { className: "phone-shell splash-shell" },
+    h(
+      "section",
+      { className: "splash-hero" },
+      h("div", { className: "avatar" }, h(Icon, { name: "fish" })),
+      h("p", { className: "eyebrow" }, "Fishing forecast"),
+      h("h1", null, "Where are you fishing?"),
+      h("p", null, "Enter a pier, lake, bay, beach, bridge, city, or coordinates. The app will use that spot to pull NOAA tides when nearby and NOAA/NWS weather for the local forecast.")
+    ),
+    h(
+      "form",
+      { className: "spot-form", onSubmit: saveSpot },
+      h("label", null, h("span", null, "Fishing spot"), h("input", { value: spot, onChange: (event) => setSpot(event.target.value), placeholder: "Example: Lake Tahoe", autoFocus: true })),
+      h("button", { type: "submit" }, "Build forecast")
+    ),
+    h(
+      "section",
+      { className: "spot-examples" },
+      h("strong", null, "Try one"),
+      ...examples.map((name) => h("button", { key: name, onClick: () => setSpot(name) }, name))
+    )
+  );
+}
+
 function HomePage({ selected, setSelected, forecast, loading, settings }) {
   const days = weekDays();
   const score = forecast ? forecast.score : 0;
@@ -337,7 +382,7 @@ function HomePage({ selected, setSelected, forecast, loading, settings }) {
     h(
       "section",
       { className: "topbar", key: "home-top" },
-      h("div", null, h("p", { className: "eyebrow" }, settings.spotName || "Dumbarton Bridge"), h("h1", null, "Fishing today")),
+      h("div", null, h("p", { className: "eyebrow" }, (forecast && forecast.location && forecast.location.name) || settings.spotName || "Fishing spot"), h("h1", null, "Fishing today")),
       h("div", { className: "avatar" }, h(Icon, { name: "fish" }))
     ),
     h(
@@ -360,7 +405,7 @@ function HomePage({ selected, setSelected, forecast, loading, settings }) {
         "div",
         { className: "hero-copy" },
         h("p", { className: "eyebrow" }, "Fishing score"),
-        h("h2", null, loading ? "Checking NOAA..." : `${forecast.status} day`),
+        h("h2", null, loading || !forecast ? "Checking NOAA..." : `${forecast.status} day`),
         h("p", null, forecast ? `Best window: ${forecast.bestWindow}` : "Finding tide and weather timing.")
       ),
       h(ScoreRing, { score }),
@@ -379,14 +424,14 @@ function HomePage({ selected, setSelected, forecast, loading, settings }) {
         h("article", { className: "reason-card", key: reason }, h("strong", null, index + 1), h("p", null, localizeReasonText(reason, settings)))
       )
     ),
-    h("section", { className: "charts-grid", key: "home-charts" }, h(TideChart, { data: (forecast && forecast.tides) || [] }), h(WeatherChart, { data: (forecast && forecast.weather) || [], settings })),
+    h("section", { className: "charts-grid", key: "home-charts" }, h(TideChart, { data: (forecast && forecast.tides) || [], tidalAvailable: forecast && forecast.tideStationNearby }), h(WeatherChart, { data: (forecast && forecast.weather) || [], settings })),
     h(
       "section",
       { className: "metrics", key: "home-metrics" },
       h("article", null, h("span", null, "Water"), h("strong", null, forecast && forecast.waterTemp ? formatTemperature(forecast.waterTemp, settings) : "--")),
-      h("article", null, h("span", null, "Current"), h("strong", null, forecast && forecast.best && forecast.best.movement ? formatMovement(forecast.best.movement, settings) : "--")),
+      h("article", null, h("span", null, forecast && forecast.tideStationNearby ? "Current" : "Movement"), h("strong", null, forecast && forecast.best && forecast.best.movement ? formatMovement(forecast.best.movement, settings) : "--")),
       h("article", null, h("span", null, "Moon"), h("strong", null, `${(forecast && forecast.moon && forecast.moon.illumination) || "--"}%`)),
-      h("article", null, h("span", null, "Top tide"), h("strong", null, (forecast && forecast.best && forecast.best.tide) || "--"))
+      h("article", null, h("span", null, forecast && forecast.tideStationNearby ? "Top tide" : "Driver"), h("strong", null, forecast && forecast.tideStationNearby ? (forecast.best && forecast.best.tide) || "--" : "weather"))
     ),
     h("section", { className: "section-head", key: "home-species-title" }, h("h2", null, "Species"), h("span", null, "preferred first")),
     h(
@@ -577,7 +622,7 @@ function PostPage({ forecast, loading, settings }) {
   const preferred = (settings.preferredSpecies || []).slice(0, 2).join(" and ") || "local fish";
   const outlook = forecast
     ? [
-        `${settings.spotName || "Dumbarton Bridge"} fishing outlook`,
+        `${(forecast.location && forecast.location.name) || settings.spotName || "Fishing spot"} fishing outlook`,
         `${forecast.status} day, ${forecast.score}/100.`,
         `Best window: ${forecast.bestWindow}.`,
         `Water: ${forecast.waterTemp ? formatTemperature(forecast.waterTemp, settings) : "not reporting"}. Wind near best window: ${formatWind(forecast.best && forecast.best.wind, settings)}.`,
@@ -633,8 +678,19 @@ function severityClass(severity) {
 }
 
 function AlertMap({ points = [], center, settings }) {
-  const [selectedName, setSelectedName] = useState("Dumbarton Bridge");
   const all = points.length ? points : [center].filter(Boolean);
+  const [selectedName, setSelectedName] = useState((center && center.name) || (all[0] && all[0].name) || "");
+  useEffect(() => {
+    setSelectedName((center && center.name) || (all[0] && all[0].name) || "");
+  }, [center && center.name, points.length]);
+  if (!all.length) {
+    return h(
+      "div",
+      { className: "alert-map" },
+      h("div", { className: "map-head" }, h("strong", null, "Nearby scan map"), h("span", null, "loading")),
+      h("div", { className: "map-loading" }, "Building local scan...")
+    );
+  }
   const selected = all.find((point) => point.name === selectedName) || all[0];
   const lats = all.map((p) => p.lat);
   const lons = all.map((p) => p.lon);
@@ -654,22 +710,21 @@ function AlertMap({ points = [], center, settings }) {
     h("div", { className: "map-head" }, h("strong", null, "Nearby scan map"), h("span", null, "touch a dot")),
     h(
       "svg",
-      { viewBox: "0 0 300 172", role: "img", "aria-label": "Geospatial weather anomaly map near Dumbarton Bridge" },
+      { viewBox: "0 0 300 172", role: "img", "aria-label": "Geospatial weather anomaly map near selected fishing spot" },
       h("defs", null, h("linearGradient", { id: "mapSky", x1: "0", x2: "1" }, h("stop", { offset: "0%", stopColor: "#e8f7fb" }), h("stop", { offset: "100%", stopColor: "#fff3c4" }))),
       h("rect", { className: "map-sky", x: "0", y: "0", width: "300", height: "172", rx: "18" }),
-      h("g", { className: "map-sun" }, h("circle", { cx: "250", cy: "35", r: "17" }), h("path", { d: "M250 8v11M250 51v11M223 35h11M266 35h11M231 16l8 8M261 46l8 8M269 16l-8 8M239 46l-8 8" })),
       h("path", { className: "map-water", d: "M25 126 C72 92 88 46 142 64 C198 82 217 22 277 36 L277 150 L25 150 Z" }),
       h("path", { className: "map-shore", d: "M25 126 C78 110 105 92 151 102 C201 113 235 82 277 88" }),
       ...all.map((point) => {
         const pos = plot(point);
-        const bridge = point.name === "Dumbarton Bridge";
+        const mainSpot = center && point.name === center.name;
         const active = selected && selected.name === point.name;
         const selectPoint = () => setSelectedName(point.name);
         return h(
           "g",
           { key: point.name, className: "map-point", onClick: selectPoint, onPointerDown: selectPoint, onTouchStart: selectPoint, tabIndex: 0, role: "button", "aria-label": `${point.name} ${point.fishingScore || "--"} fishing score` },
-          h("circle", { className: `${bridge ? "map-dot bridge" : "map-dot"} ${active ? "active" : ""}`, cx: pos.x, cy: pos.y, r: active ? 10 : bridge ? 8 : 6, onClick: selectPoint, onPointerDown: selectPoint, onTouchStart: selectPoint }),
-          h("text", { x: Math.min(236, pos.x + 9), y: Math.max(18, pos.y - 9) }, bridge ? "Bridge" : point.name.split(" ")[0])
+          h("circle", { className: `${mainSpot ? "map-dot primary" : "map-dot"} ${active ? "active" : ""}`, cx: pos.x, cy: pos.y, r: active ? 10 : mainSpot ? 8 : 6, onClick: selectPoint, onPointerDown: selectPoint, onTouchStart: selectPoint }),
+          h("text", { x: Math.min(236, pos.x + 9), y: Math.max(18, pos.y - 9) }, mainSpot ? "Spot" : point.name.split(" ")[0])
         );
       })
     ),
@@ -691,11 +746,11 @@ function AlertsPage({ selected, settings }) {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/anomalies?date=${selected}`)
+    fetch(`/api/anomalies?date=${selected}&location=${spotQuery(settings)}`)
       .then((response) => response.json())
       .then(setScan)
       .finally(() => setLoading(false));
-  }, [selected]);
+  }, [selected, settings.spotName]);
 
   const rawAnomalies = (scan && scan.anomalies) || [];
   const anomalies = rawAnomalies.filter((item) => {
@@ -723,7 +778,7 @@ function AlertsPage({ selected, settings }) {
       "section",
       { className: "alert-list", key: "alert-list" },
       ...(loading
-        ? [h("article", { className: "anomaly-card low", key: "loading" }, h("span", null, "Loading"), h("h3", null, "Checking weather anomaly signals"), h("p", null, "Pulling NOAA/NWS forecast points near Dumbarton Bridge."))]
+        ? [h("article", { className: "anomaly-card low", key: "loading" }, h("span", null, "Loading"), h("h3", null, "Checking weather anomaly signals"), h("p", null, "Pulling NOAA/NWS forecast points near your fishing spot."))]
         : anomalies.map((item) =>
             h(
               "article",
@@ -755,7 +810,7 @@ function AlertsPage({ selected, settings }) {
 
 function ProfilePage({ settings, setSettings }) {
   const updateSetting = (key, value) => {
-    setSettings((current) => ({ ...current, [key]: value }));
+    setSettings((current) => ({ ...current, [key]: value, ...(key === "spotName" ? { spotReady: !!value.trim() } : {}) }));
   };
   const toggleArraySetting = (key, value) => {
     setSettings((current) => {
@@ -777,7 +832,7 @@ function ProfilePage({ settings, setSettings }) {
       "section",
       { className: "profile-card", key: "profile-card" },
       h("p", { className: "eyebrow" }, `Hello, ${settings.displayName || "Angler"}`),
-      h("h2", null, settings.spotName || "Dumbarton Bridge"),
+      h("h2", null, settings.spotName || "Choose a fishing spot"),
       h("p", null, "Customize the app so forecast cards, fish tips, alerts, and learning resources match how you fish.")
     ),
     h(
@@ -785,7 +840,7 @@ function ProfilePage({ settings, setSettings }) {
       { className: "settings-panel", key: "settings-panel" },
       h("div", { className: "section-head compact" }, h("h2", null, "Customize"), h("span", null, "saved here")),
       h("label", null, h("span", null, "Display name"), h("input", { value: settings.displayName, onChange: (event) => updateSetting("displayName", event.target.value), placeholder: "Angler" })),
-      h("label", null, h("span", null, "Fishing spot label"), h("input", { value: settings.spotName, onChange: (event) => updateSetting("spotName", event.target.value), placeholder: "Dumbarton Bridge" })),
+      h("label", null, h("span", null, "Fishing spot"), h("input", { value: settings.spotName, onChange: (event) => updateSetting("spotName", event.target.value), placeholder: "Lake Tahoe or 37.5067,-122.115" })),
       h(
         "label",
         null,
@@ -908,16 +963,24 @@ function App() {
   const [settings, setSettings] = useState(loadSettings);
 
   useEffect(() => {
+    if (!settings.spotReady) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    fetch(`/api/forecast?date=${selected}`)
+    fetch(`/api/forecast?date=${selected}&location=${spotQuery(settings)}`)
       .then((response) => response.json())
       .then(setForecast)
       .finally(() => setLoading(false));
-  }, [selected]);
+  }, [selected, settings.spotName, settings.spotReady]);
 
   useEffect(() => {
     saveSettings(settings);
   }, [settings]);
+
+  if (!settings.spotReady) {
+    return h(SplashPage, { settings, setSettings });
+  }
 
   return h(
     "main",

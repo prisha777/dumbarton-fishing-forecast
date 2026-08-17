@@ -14,27 +14,14 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = pathlib.Path(__file__).resolve().parent
 STATIC = ROOT / "static"
-STATION_ID = "9414509"
-STATION_NAME = "Dumbarton Bridge"
-LAT = 37.5067
-LON = -122.115
+DEFAULT_STATION_ID = "9414509"
+DEFAULT_STATION_NAME = "Dumbarton Bridge"
+DEFAULT_LAT = 37.5067
+DEFAULT_LON = -122.115
+DEFAULT_SPOT = "Dumbarton Bridge"
 CACHE: dict[str, tuple[float, object]] = {}
 USER_AGENT = "DumbartonFishingForecast/1.0 contact: local-demo@example.com"
-COOPS_OBSERVATION_STATIONS = [
-    {"id": STATION_ID, "name": STATION_NAME},
-    {"id": "9414290", "name": "San Francisco"},
-    {"id": "9414750", "name": "Alameda"},
-    {"id": "9414863", "name": "Richmond"},
-    {"id": "9414523", "name": "Redwood City"},
-    {"id": "9414458", "name": "San Mateo Bridge"},
-]
-WEATHER_SCAN_POINTS = [
-    {"name": "Dumbarton Bridge", "lat": LAT, "lon": LON},
-    {"name": "Redwood City shore", "lat": 37.535, "lon": -122.224},
-    {"name": "Fremont marsh", "lat": 37.515, "lon": -121.978},
-    {"name": "Palo Alto Baylands", "lat": 37.459, "lon": -122.105},
-    {"name": "Hayward shoreline", "lat": 37.621, "lon": -122.137},
-]
+DEFAULT_LOCATION = {"query": DEFAULT_SPOT, "name": DEFAULT_SPOT, "lat": DEFAULT_LAT, "lon": DEFAULT_LON}
 
 
 def fetch_json(url: str, ttl: int = 600) -> dict:
@@ -50,16 +37,88 @@ def fetch_json(url: str, ttl: int = 600) -> dict:
     return payload
 
 
+def haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    radius = 3958.8
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    d_phi = math.radians(lat2 - lat1)
+    d_lam = math.radians(lon2 - lon1)
+    a = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lam / 2) ** 2
+    return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def parse_location_query(query: str) -> dict | None:
+    text = (query or "").strip()
+    if not text:
+        return None
+    if "," in text:
+        left, right = [part.strip() for part in text.split(",", 1)]
+        lat = parse_float(left)
+        lon = parse_float(right)
+        if lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180:
+            return {"query": text, "name": text, "lat": lat, "lon": lon}
+    return None
+
+
+def geocode_location(query: str) -> dict:
+    parsed = parse_location_query(query)
+    if parsed:
+        return parsed
+    text = (query or DEFAULT_SPOT).strip()
+    params = urllib.parse.urlencode({"name": text, "count": "1", "language": "en", "format": "json"})
+    data = fetch_json(f"https://geocoding-api.open-meteo.com/v1/search?{params}", ttl=60 * 60 * 24)
+    results = data.get("results", []) if isinstance(data, dict) else []
+    if not results:
+        if text != DEFAULT_SPOT:
+            return geocode_location(DEFAULT_SPOT)
+        return DEFAULT_LOCATION
+    place = results[0]
+    parts = [place.get("name"), place.get("admin1"), place.get("country_code")]
+    display = ", ".join(part for part in parts if part)
+    return {"query": text, "name": place.get("name", text), "displayName": display or text, "lat": float(place["latitude"]), "lon": float(place["longitude"])}
+
+
+def get_coops_stations() -> list[dict]:
+    data = fetch_json("https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json?type=waterlevels", ttl=60 * 60 * 24)
+    stations = []
+    for item in data.get("stations", []):
+        lat = parse_float(item.get("lat"))
+        lon = parse_float(item.get("lng") or item.get("lon"))
+        station_id = item.get("id")
+        if station_id and lat is not None and lon is not None:
+            stations.append({"id": str(station_id), "name": item.get("name", str(station_id)), "lat": lat, "lon": lon})
+    return stations
+
+
+def nearest_coops_stations(location: dict, limit: int = 8) -> list[dict]:
+    stations = []
+    for station in get_coops_stations():
+        distance = haversine_miles(location["lat"], location["lon"], station["lat"], station["lon"])
+        stations.append({**station, "distance": round(distance, 1)})
+    stations.sort(key=lambda item: item["distance"])
+    return stations[:limit] or [{"id": DEFAULT_STATION_ID, "name": DEFAULT_STATION_NAME, "lat": DEFAULT_LAT, "lon": DEFAULT_LON, "distance": 0}]
+
+
+def weather_scan_points(location: dict) -> list[dict]:
+    return [
+        {"name": location["name"], "lat": location["lat"], "lon": location["lon"]},
+        {"name": "North scan", "lat": location["lat"] + 0.07, "lon": location["lon"]},
+        {"name": "South scan", "lat": location["lat"] - 0.07, "lon": location["lon"]},
+        {"name": "West scan", "lat": location["lat"], "lon": location["lon"] - 0.08},
+        {"name": "East scan", "lat": location["lat"], "lon": location["lon"] + 0.08},
+    ]
+
+
 def coops_url(**params: str) -> str:
     base = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
     return base + "?" + urllib.parse.urlencode(params)
 
 
-def get_tide_predictions(day: dt.date, interval: str) -> list[dict]:
+def get_tide_predictions(day: dt.date, interval: str, station: str = DEFAULT_STATION_ID) -> list[dict]:
     params = {
         "begin_date": day.strftime("%Y%m%d"),
         "end_date": day.strftime("%Y%m%d"),
-        "station": STATION_ID,
+        "station": station,
         "product": "predictions",
         "datum": "MLLW",
         "time_zone": "lst_ldt",
@@ -71,7 +130,7 @@ def get_tide_predictions(day: dt.date, interval: str) -> list[dict]:
     return data.get("predictions", [])
 
 
-def get_latest_coops_product(product: str, station: str = STATION_ID) -> list[dict]:
+def get_latest_coops_product(product: str, station: str = DEFAULT_STATION_ID) -> list[dict]:
     params = {
         "date": "latest",
         "station": station,
@@ -84,8 +143,8 @@ def get_latest_coops_product(product: str, station: str = STATION_ID) -> list[di
     return data.get("data", [])
 
 
-def get_hourly_weather(day: dt.date) -> list[dict]:
-    return get_hourly_weather_for(LAT, LON, day)
+def get_hourly_weather(day: dt.date, location: dict) -> list[dict]:
+    return get_hourly_weather_for(location["lat"], location["lon"], day)
 
 
 def get_hourly_weather_for(lat: float, lon: float, day: dt.date) -> list[dict]:
@@ -175,21 +234,25 @@ def weather_at(hourly: list[dict], hour: int) -> dict:
     }
 
 
-def score_window(tide_points: list[dict], hourly: list[dict], water_temp: float | None, moon: dict) -> tuple[list[dict], dict]:
+def score_window(tide_points: list[dict], hourly: list[dict], water_temp: float | None, moon: dict, tidal_available: bool = True) -> tuple[list[dict], dict]:
     windows = []
     for index, point in enumerate(tide_points):
         hour = int(point["time"][11:13])
         if hour < 5 or hour > 20:
             continue
 
-        direction = tide_direction(tide_points, index)
-        previous = tide_points[index - 1]["height"] if index else point["height"]
-        movement = abs(point["height"] - previous)
+        if tidal_available:
+            direction = tide_direction(tide_points, index)
+            previous = tide_points[index - 1]["height"] if index else point["height"]
+            movement = abs(point["height"] - previous)
+        else:
+            direction = "weather"
+            movement = 0
         weather = weather_at(hourly, hour)
         wind = weather["wind"]
 
-        tide_score = 30 if direction == "incoming" else 18 if direction == "outgoing" else 8
-        movement_score = min(20, movement * 28)
+        tide_score = 30 if direction == "incoming" else 18 if direction in {"outgoing", "weather"} else 8
+        movement_score = 8 if not tidal_available else min(20, movement * 28)
         wind_score = max(0, 25 - max(0, wind - 7) * 2.2)
         temp_score = 12 if water_temp is None else max(0, 12 - abs(water_temp - 60) * 1.2)
         light_score = 8 if hour in range(6, 10) or hour in range(17, 20) else 4
@@ -230,7 +293,7 @@ def species_insights(score: int, tide: str, water_temp: float | None, wind: floa
             "name": "Striped bass",
             "activity": "High" if striper_active else "Moderate",
             "bait": "swimbaits, live anchovy, or cut bait along current edges",
-            "note": "Moving water near bridge structure gives bass ambush lanes.",
+            "note": "Moving water near structure, points, channels, or cover gives bass ambush lanes.",
         },
         {
             "name": "California halibut",
@@ -291,7 +354,7 @@ def water_temperature_signal(water_temp: float | None, station: dict | None = No
     return {"status": status, "severity": severity, "summary": summary, "advice": advice, "station": station}
 
 
-def feeding_positioning_plan(best: dict, moon: dict, water_temp: float | None) -> dict:
+def feeding_positioning_plan(best: dict, moon: dict, water_temp: float | None, tidal_available: bool = True) -> dict:
     illumination = int(moon.get("illumination") or 0)
     waxing = "Waxing" in moon.get("label", "")
     if waxing and 20 <= illumination <= 75:
@@ -356,7 +419,7 @@ def feeding_positioning_plan(best: dict, moon: dict, water_temp: float | None) -
             },
         ],
         "avoid": "Do not use the moon to claim fish will feed at an exact time. Use it to modify where and how deep you search.",
-        "bestCurrentClue": f"Today's best modeled window has {best.get('tide', 'unknown')} tide movement near {best.get('movement', '--')} ft/hr.",
+        "bestCurrentClue": f"Today's best modeled window has {best.get('tide', 'unknown')} tide movement near {best.get('movement', '--')} ft/hr." if tidal_available else "Today's best modeled window is based on local weather, light, moon phase, and available observations because no nearby NOAA tide station was found.",
     }
 
 
@@ -369,6 +432,7 @@ def build_no_catch_diagnosis(
     water_temp_station: dict | None,
     wind_observation: dict | None,
     moon: dict,
+    tidal_available: bool = True,
 ) -> dict:
     causes = []
     best_score = int(best.get("score") or 0)
@@ -403,7 +467,7 @@ def build_no_catch_diagnosis(
             )
         )
 
-    if best_tide == "slack" or (fishable and len(slow_windows) / len(fishable) >= 0.35):
+    if tidal_available and (best_tide == "slack" or (fishable and len(slow_windows) / len(fishable) >= 0.35)):
         causes.append(
             cause_entry(
                 "Weak or slack current",
@@ -413,7 +477,7 @@ def build_no_catch_diagnosis(
             )
         )
 
-    if fast_windows and best_movement > 1.15:
+    if tidal_available and fast_windows and best_movement > 1.15:
         causes.append(
             cause_entry(
                 "Presentation may be moving too fast",
@@ -502,7 +566,7 @@ def build_no_catch_diagnosis(
         "summary": summary,
         "causes": causes[:5],
         "waterTemperature": water_signal,
-        "positioning": feeding_positioning_plan(best, moon, water_temp),
+        "positioning": feeding_positioning_plan(best, moon, water_temp, tidal_available),
         "dataUsed": [
             "NOAA CO-OPS tide movement and tide direction",
             "NOAA/NWS hourly wind and weather forecast",
@@ -564,10 +628,12 @@ def severity_for(kind: str, value: float) -> str:
     return "Low"
 
 
-def build_weather_anomalies(day: dt.date) -> dict:
+def build_weather_anomalies(day: dt.date, location_query: str = DEFAULT_SPOT) -> dict:
+    location = geocode_location(location_query)
+    scan_points = weather_scan_points(location)
     points = []
     errors = []
-    for point in WEATHER_SCAN_POINTS:
+    for point in scan_points:
         try:
             periods = get_hourly_weather_for(point["lat"], point["lon"], day)
             summary = summarize_scan_period(periods)
@@ -577,54 +643,54 @@ def build_weather_anomalies(day: dt.date) -> dict:
 
     active_alerts = []
     try:
-        active_alerts = get_active_nws_alerts(LAT, LON)
+        active_alerts = get_active_nws_alerts(location["lat"], location["lon"])
     except Exception as exc:
         errors.append(f"NWS active alerts unavailable: {exc}")
 
     usable = [p for p in points if p.get("wind") is not None]
     anomalies = []
     if usable:
-        bridge = next((p for p in usable if p["name"] == "Dumbarton Bridge"), usable[0])
-        nearby = [p for p in usable if p["name"] != bridge["name"]] or usable
+        center_point = next((p for p in usable if p["name"] == location["name"]), usable[0])
+        nearby = [p for p in usable if p["name"] != center_point["name"]] or usable
         wind_values = [p["wind"] for p in nearby if p.get("wind") is not None]
         temp_values = [p["temp"] for p in nearby if p.get("temp") is not None]
         precip_values = [p["precip"] for p in nearby if p.get("precip") is not None]
-        avg_wind = statistics.mean(wind_values) if wind_values else bridge.get("wind") or 0
-        avg_temp = statistics.mean(temp_values) if temp_values and bridge.get("temp") is not None else bridge.get("temp") or 0
+        avg_wind = statistics.mean(wind_values) if wind_values else center_point.get("wind") or 0
+        avg_temp = statistics.mean(temp_values) if temp_values and center_point.get("temp") is not None else center_point.get("temp") or 0
         avg_precip = statistics.mean(precip_values) if precip_values else 0
 
-        wind_delta = (bridge.get("wind") or 0) - avg_wind
-        if (bridge.get("wind") or 0) >= 18 or wind_delta >= 7:
-            severity = severity_for("wind", bridge.get("wind") or 0)
+        wind_delta = (center_point.get("wind") or 0) - avg_wind
+        if (center_point.get("wind") or 0) >= 18 or wind_delta >= 7:
+            severity = severity_for("wind", center_point.get("wind") or 0)
             anomalies.append(
                 {
                     "kind": "Wind",
                     "severity": severity,
-                    "title": "Wind stands out near the bridge",
-                    "message": f"NOAA/NWS forecast shows about {round(bridge.get('wind') or 0)} mph wind near Dumbarton, {round(abs(wind_delta), 1)} mph {'above' if wind_delta >= 0 else 'below'} the nearby scan average.",
+                    "title": "Wind stands out near your spot",
+                    "message": f"NOAA/NWS forecast shows about {round(center_point.get('wind') or 0)} mph wind near {location['name']}, {round(abs(wind_delta), 1)} mph {'above' if wind_delta >= 0 else 'below'} the nearby scan average.",
                     "advice": "Use extra caution from shore and avoid small craft if gusts rise or whitecaps appear.",
-                    "lat": bridge["lat"],
-                    "lon": bridge["lon"],
+                    "lat": center_point["lat"],
+                    "lon": center_point["lon"],
                 }
             )
 
-        precip_delta = (bridge.get("precip") or 0) - avg_precip
-        if (bridge.get("precip") or 0) >= 35 or precip_delta >= 25:
-            severity = severity_for("precip", bridge.get("precip") or 0)
+        precip_delta = (center_point.get("precip") or 0) - avg_precip
+        if (center_point.get("precip") or 0) >= 35 or precip_delta >= 25:
+            severity = severity_for("precip", center_point.get("precip") or 0)
             anomalies.append(
                 {
                     "kind": "Rain",
                     "severity": severity,
                     "title": "Rain chance is elevated nearby",
-                    "message": f"The bridge scan shows a {round(bridge.get('precip') or 0)}% precipitation chance, compared with a nearby average near {round(avg_precip)}%.",
+                    "message": f"The spot scan shows a {round(center_point.get('precip') or 0)}% precipitation chance, compared with a nearby average near {round(avg_precip)}%.",
                     "advice": "Bring rain gear, watch road visibility, and pause fishing if thunder develops.",
-                    "lat": bridge["lat"],
-                    "lon": bridge["lon"],
+                    "lat": center_point["lat"],
+                    "lon": center_point["lon"],
                 }
             )
 
-        if bridge.get("temp") is not None:
-            temp_delta = abs((bridge.get("temp") or 0) - avg_temp)
+        if center_point.get("temp") is not None:
+            temp_delta = abs((center_point.get("temp") or 0) - avg_temp)
             if temp_delta >= 8:
                 severity = severity_for("temp", temp_delta)
                 anomalies.append(
@@ -632,27 +698,27 @@ def build_weather_anomalies(day: dt.date) -> dict:
                         "kind": "Temperature",
                         "severity": severity,
                         "title": "Temperature differs from nearby shorelines",
-                        "message": f"Dumbarton is about {round(temp_delta, 1)} degrees F away from the nearby forecast average.",
+                        "message": f"{location['name']} is about {round(temp_delta, 1)} degrees F away from the nearby forecast average.",
                         "advice": "Layer clothing and expect comfort to change quickly near open water.",
-                        "lat": bridge["lat"],
-                        "lon": bridge["lon"],
+                        "lat": center_point["lat"],
+                        "lon": center_point["lon"],
                     }
                 )
 
         condition_counts: dict[str, int] = {}
         for p in nearby:
             condition_counts[p.get("short") or "Forecast unavailable"] = condition_counts.get(p.get("short") or "Forecast unavailable", 0) + 1
-        common_condition = max(condition_counts, key=condition_counts.get) if condition_counts else bridge.get("short")
-        if bridge.get("short") != common_condition and bridge.get("short") not in {"Forecast unavailable", None}:
+        common_condition = max(condition_counts, key=condition_counts.get) if condition_counts else center_point.get("short")
+        if center_point.get("short") != common_condition and center_point.get("short") not in {"Forecast unavailable", None}:
             anomalies.append(
                 {
                     "kind": "Microclimate",
                     "severity": "Low",
-                    "title": "Bridge forecast differs from nearby points",
-                    "message": f"Dumbarton shows '{bridge.get('short')}', while nearby points most often show '{common_condition}'.",
-                    "advice": "Check the sky before committing to a long session; Bay edges can shift quickly.",
-                    "lat": bridge["lat"],
-                    "lon": bridge["lon"],
+                    "title": "Spot forecast differs from nearby points",
+                    "message": f"{location['name']} shows '{center_point.get('short')}', while nearby points most often show '{common_condition}'.",
+                    "advice": "Check the sky before committing to a long session; shoreline weather can shift quickly.",
+                    "lat": center_point["lat"],
+                    "lon": center_point["lon"],
                 }
             )
 
@@ -665,8 +731,8 @@ def build_weather_anomalies(day: dt.date) -> dict:
                 "title": alert["event"],
                 "message": alert["headline"],
                 "advice": alert["instruction"],
-                "lat": LAT,
-                "lon": LON,
+                "lat": location["lat"],
+                "lon": location["lon"],
                 "area": alert["area"],
             },
         )
@@ -677,10 +743,10 @@ def build_weather_anomalies(day: dt.date) -> dict:
                 "kind": "Normal",
                 "severity": "Low",
                 "title": "No local weather anomaly detected",
-                "message": "The NOAA/NWS scan does not show a major wind, rain, or temperature outlier around Dumbarton Bridge right now.",
-                "advice": "Still check visible conditions before fishing because Bay weather can change quickly.",
-                "lat": LAT,
-                "lon": LON,
+                "message": f"The NOAA/NWS scan does not show a major wind, rain, or temperature outlier around {location['name']} right now.",
+                "advice": "Still check visible conditions before fishing because local weather can change quickly.",
+                "lat": location["lat"],
+                "lon": location["lon"],
             }
         )
 
@@ -692,20 +758,24 @@ def build_weather_anomalies(day: dt.date) -> dict:
         "date": day.isoformat(),
         "updated": dt.datetime.now().isoformat(timespec="seconds"),
         "status": status,
-        "summary": "AI-assisted geospatial scan using NOAA/NWS forecast points around Dumbarton Bridge.",
-        "center": {"name": STATION_NAME, "lat": LAT, "lon": LON},
+        "summary": f"AI-assisted geospatial scan using NOAA/NWS forecast points around {location['name']}.",
+        "center": {"name": location["name"], "lat": location["lat"], "lon": location["lon"]},
         "points": points,
         "anomalies": anomalies[:6],
         "errors": errors,
         "sources": [
             "NOAA/National Weather Service hourly forecast grid",
             "NOAA/National Weather Service active weather alerts",
-            "Local geospatial comparison around Dumbarton Bridge",
+            "Local geospatial comparison around the selected fishing spot",
         ],
     }
 
 
-def build_forecast(day: dt.date) -> dict:
+def build_forecast(day: dt.date, location_query: str = DEFAULT_SPOT) -> dict:
+    location = geocode_location(location_query)
+    candidate_stations = nearest_coops_stations(location)
+    tide_station = candidate_stations[0]
+    tide_station_nearby = tide_station.get("distance", 999) <= 80
     errors = []
     tides = []
     extremes = []
@@ -714,18 +784,33 @@ def build_forecast(day: dt.date) -> dict:
     water_temp_station = None
     wind_observation = None
 
-    try:
-        tides = [parse_prediction(item) for item in get_tide_predictions(day, "h")]
-        extremes = get_tide_predictions(day, "hilo")
-    except Exception as exc:
-        errors.append(f"Tide predictions unavailable: {exc}")
+    if tide_station_nearby:
+        try:
+            for station in candidate_stations:
+                try:
+                    tide_values = get_tide_predictions(day, "h", station["id"])
+                    if tide_values:
+                        tide_station = station
+                        tides = [parse_prediction(item) for item in tide_values]
+                        extremes = get_tide_predictions(day, "hilo", station["id"])
+                        break
+                except Exception:
+                    continue
+            if not tides:
+                errors.append("NOAA tide predictions unavailable near this spot.")
+        except Exception as exc:
+            errors.append(f"Tide predictions unavailable: {exc}")
+    else:
+        errors.append(f"Nearest NOAA tide station is {tide_station['distance']} miles away, so tide guidance is not treated as local.")
 
     try:
-        hourly = get_hourly_weather(day)
+        hourly = get_hourly_weather(day, location)
     except Exception as exc:
         errors.append(f"Hourly weather unavailable: {exc}")
 
-    for station in COOPS_OBSERVATION_STATIONS:
+    observation_stations = [station for station in candidate_stations if station.get("distance", 999) <= 80]
+
+    for station in observation_stations:
         try:
             values = get_latest_coops_product("water_temperature", station["id"])
             water_temp = parse_float(values[0].get("v")) if values else None
@@ -735,7 +820,7 @@ def build_forecast(day: dt.date) -> dict:
         except Exception:
             continue
 
-    for station in COOPS_OBSERVATION_STATIONS:
+    for station in observation_stations:
         try:
             values = get_latest_coops_product("wind", station["id"])
             if values:
@@ -748,28 +833,33 @@ def build_forecast(day: dt.date) -> dict:
         except Exception:
             continue
 
+    real_tides_available = bool(tides)
     if not tides:
         tides = [{"time": dt.datetime.combine(day, dt.time(hour=h)).isoformat(), "hour": h, "height": 3 + math.sin(h / 24 * math.tau)} for h in range(24)]
 
     moon = moon_phase(day)
-    windows, best = score_window(tides, hourly, water_temp, moon)
+    tidal_available = tide_station_nearby and real_tides_available
+    windows, best = score_window(tides, hourly, water_temp, moon, tidal_available)
     water_signal = water_temperature_signal(water_temp, water_temp_station)
-    no_catch = build_no_catch_diagnosis(windows, best, tides, hourly, water_temp, water_temp_station, wind_observation, moon)
+    no_catch = build_no_catch_diagnosis(windows, best, tides, hourly, water_temp, water_temp_station, wind_observation, moon, tidal_available)
     score = best.get("score", 0)
     wind = best.get("wind", 0)
     alerts = []
     if wind >= 18:
-        alerts.append("Strong afternoon wind may make the bridge area uncomfortable and less safe.")
+        alerts.append("Strong wind may make the spot uncomfortable and less safe.")
     if wind_observation and wind_observation.get("gust") and wind_observation["gust"] >= 25:
         alerts.append("NOAA observed gusts are elevated; check conditions before launching.")
     if best.get("tide") == "slack":
         alerts.append("Slack tide means weaker current and less bait movement.")
 
-    reasons = [
-        f"The top window lines up with an {best.get('tide', 'unknown')} tide and about {best.get('wind', 0)} mph wind.",
-        "Moving tide is weighted heavily because it concentrates bait near bridge structure.",
-        f"The moon is {moon['label'].lower()} with {moon['illumination']}% illumination.",
-    ]
+    reasons = []
+    if tidal_available and best.get("tide") != "weather":
+        reasons.append(f"The top window lines up with an {best.get('tide', 'unknown')} tide and about {best.get('wind', 0)} mph wind.")
+        reasons.append(f"Moving water is weighted heavily. Nearest NOAA tide station is {tide_station['name']} ({tide_station['distance']} miles away).")
+    else:
+        reasons.append(f"The top window is driven by local NOAA/NWS weather, light, and moon timing, with about {best.get('wind', 0)} mph wind.")
+        reasons.append("No nearby NOAA tide station was found, so coastal tide guidance is not treated as local.")
+    reasons.append(f"The moon is {moon['label'].lower()} with {moon['illumination']}% illumination.")
     if water_temp:
         station_label = water_temp_station.get("name", "nearby station") if water_temp_station else "nearby station"
         reasons.append(f"NOAA {station_label} water temperature is {round(water_temp, 1)} degrees F: {water_signal['status'].lower()}.")
@@ -780,7 +870,10 @@ def build_forecast(day: dt.date) -> dict:
         errors.append("Nearby NOAA water temperature observation unavailable.")
 
     return {
-        "station": {"id": STATION_ID, "name": STATION_NAME, "lat": LAT, "lon": LON},
+        "location": location,
+        "station": tide_station,
+        "nearbyStations": candidate_stations[:5],
+        "tideStationNearby": tide_station_nearby,
         "date": day.isoformat(),
         "updated": dt.datetime.now().isoformat(timespec="seconds"),
         "score": score,
@@ -812,8 +905,8 @@ def build_forecast(day: dt.date) -> dict:
         "dataStatus": "live" if not errors else "partial",
         "errors": errors,
         "sources": [
-            "NOAA CO-OPS tide predictions station 9414509",
-            "NOAA/NWS hourly forecast API for Dumbarton Bridge coordinates",
+            f"NOAA CO-OPS tide predictions station {tide_station['id']}",
+            "NOAA/NWS hourly forecast API for selected spot coordinates",
             "NOAA CO-OPS observed water temperature and wind when available",
             "No-catch diagnosis uses NOAA tide movement, NWS weather, observed water/wind data, and moon phase timing",
         ],
@@ -829,11 +922,12 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/forecast":
             query = urllib.parse.parse_qs(parsed.query)
             selected = query.get("date", [dt.date.today().isoformat()])[0]
+            location_query = query.get("location", [DEFAULT_SPOT])[0]
             try:
                 day = dt.date.fromisoformat(selected)
             except ValueError:
                 day = dt.date.today()
-            payload = build_forecast(day)
+            payload = build_forecast(day, location_query)
             body = json.dumps(payload).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -846,11 +940,12 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/anomalies":
             query = urllib.parse.parse_qs(parsed.query)
             selected = query.get("date", [dt.date.today().isoformat()])[0]
+            location_query = query.get("location", [DEFAULT_SPOT])[0]
             try:
                 day = dt.date.fromisoformat(selected)
             except ValueError:
                 day = dt.date.today()
-            payload = build_weather_anomalies(day)
+            payload = build_weather_anomalies(day, location_query)
             body = json.dumps(payload).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -868,7 +963,7 @@ class Handler(SimpleHTTPRequestHandler):
 def main() -> None:
     port = int(os.environ.get("PORT", "8787"))
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"Dumbarton fishing forecast running at http://127.0.0.1:{port}")
+    print(f"Fishing forecast running at http://127.0.0.1:{port}")
     server.serve_forever()
 
 
