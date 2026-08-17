@@ -417,7 +417,6 @@ svg {
   display: block;
   margin-top: 7px;
   font-size: 19px;
-  text-transform: capitalize;
 }
 
 .no-catch-panel {
@@ -1049,10 +1048,11 @@ svg {
 }
 
 .alert-map {
-  background: var(--blue);
+  background: #ffffff;
   border-radius: 18px;
   padding: 16px;
   margin-top: 10px;
+  box-shadow: inset 0 0 0 1px rgba(32, 33, 36, 0.05);
 }
 
 .map-head {
@@ -1071,17 +1071,40 @@ svg {
 .alert-map svg {
   width: 100%;
   height: 172px;
+  border-radius: 16px;
+}
+
+.map-sky {
+  fill: url("#mapSky");
+}
+
+.map-sun circle {
+  fill: var(--sun);
+  stroke: #111;
+  stroke-width: 2;
+}
+
+.map-sun path {
+  stroke: #111;
+  stroke-width: 2;
+  stroke-linecap: round;
 }
 
 .map-water {
-  fill: rgba(255, 255, 255, 0.58);
+  fill: rgba(116, 189, 226, 0.55);
 }
 
 .map-shore {
   fill: none;
-  stroke: #6a8f52;
-  stroke-width: 5;
+  stroke: #5f8d61;
+  stroke-width: 6;
   stroke-linecap: round;
+}
+
+.map-point {
+  cursor: pointer;
+  outline: none;
+  pointer-events: all;
 }
 
 .map-dot {
@@ -1094,10 +1117,52 @@ svg {
   fill: var(--sun);
 }
 
+.map-dot.active {
+  fill: #111;
+  stroke: #fff;
+  stroke-width: 3;
+}
+
 .alert-map text {
   fill: #333;
   font-size: 10px;
+  font-weight: 800;
   stroke: none;
+}
+
+.map-callout {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 12px;
+  align-items: center;
+  background: #f6f3ea;
+  border-radius: 14px;
+  padding: 13px;
+  margin-top: 10px;
+}
+
+.map-callout strong,
+.map-callout b {
+  display: block;
+}
+
+.map-callout span,
+.map-callout p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.map-callout p {
+  grid-column: 1 / -1;
+}
+
+.map-callout b {
+  border-radius: 999px;
+  background: #111;
+  color: #fff;
+  padding: 8px 10px;
+  font-size: 12px;
 }
 
 .alert-list {
@@ -1182,6 +1247,82 @@ svg {
 .scan-points span {
   color: var(--muted);
   font-size: 13px;
+}
+
+.post-shell {
+  background: #f1efea;
+}
+
+.post-card {
+  min-height: 178px;
+  border-radius: 18px;
+  background:
+    linear-gradient(90deg, rgba(255, 211, 116, 0.94), rgba(200, 217, 160, 0.72)),
+    url("https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=82") center / cover;
+  padding: 22px;
+  margin-top: 8px;
+}
+
+.post-card h2 {
+  font-size: 31px;
+  line-height: 1;
+  margin-bottom: 10px;
+}
+
+.post-card p:last-child {
+  max-width: 260px;
+  color: #33382f;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.post-preview {
+  background: #fff;
+  border-radius: 18px;
+  padding: 16px;
+  margin-top: 10px;
+}
+
+.post-preview pre {
+  white-space: pre-wrap;
+  background: #f7f4ed;
+  border-radius: 14px;
+  padding: 14px;
+  color: #303230;
+  font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  margin: 8px 0 12px;
+}
+
+.post-preview button {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 14px;
+  background: #111;
+  color: #fff;
+  font-weight: 800;
+}
+
+.post-tips {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.post-tips article {
+  background: #fff;
+  border-radius: 16px;
+  padding: 15px;
+}
+
+.post-tips strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.post-tips p {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.35;
 }
 
 .profile-card {
@@ -1404,7 +1545,7 @@ svg {
   background: rgba(255, 255, 255, 0.94);
   border-radius: 22px 22px 0 0;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   align-items: center;
   padding: 8px 10px 14px;
   box-shadow: 0 -12px 28px rgba(29, 29, 29, 0.08);
@@ -1416,10 +1557,11 @@ svg {
   justify-items: center;
   gap: 3px;
   color: #707270;
+  min-width: 0;
 }
 
 .bottom-nav span {
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .bottom-nav .selected {
@@ -1427,7 +1569,7 @@ svg {
 }
 
 .bottom-nav .add {
-  width: 58px;
+  width: 50px;
   height: 58px;
   border-radius: 18px;
   background: var(--sun);

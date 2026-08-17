@@ -527,10 +527,21 @@ def summarize_scan_period(periods: list[dict]) -> dict:
         {p.get("shortForecast", "Forecast unavailable") for p in first_six},
         key=lambda label: sum(1 for p in first_six if p.get("shortForecast", "Forecast unavailable") == label),
     )
+    wind = round(max(winds), 1) if winds else None
+    temp = round(statistics.mean(temps), 1) if temps else None
+    precip_value = round(max(precip_values), 1) if precip_values else 0
+    fishing_score = 50
+    if wind is not None:
+        fishing_score += max(-30, 18 - max(0, wind - 8) * 3)
+    if temp is not None:
+        fishing_score += max(-12, 10 - abs(temp - 64) * 0.7)
+    fishing_score -= min(22, precip_value * 0.25)
+    fishing_score = round(max(0, min(100, fishing_score)))
     return {
-        "wind": round(max(winds), 1) if winds else None,
-        "temp": round(statistics.mean(temps), 1) if temps else None,
-        "precip": round(max(precip_values), 1) if precip_values else 0,
+        "wind": wind,
+        "temp": temp,
+        "precip": precip_value,
+        "fishingScore": fishing_score,
         "short": dominant,
         "hour": int(first_six[0]["startTime"][11:13]) if first_six else None,
     }

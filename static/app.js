@@ -4,7 +4,7 @@ const h = React.createElement;
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const today = new Date();
 const feedFilters = ["All", "Lakes", "Fishing", "Weather", "Ecology", "Laws", "NOAA"];
-const speciesOptions = ["Striped bass", "California halibut", "White sturgeon"];
+const speciesOptions = ["Striped bass", "California halibut", "White sturgeon", "Largemouth bass", "Leopard shark", "Surfperch", "Salmon", "Crappie", "Bluegill", "Catfish", "Carp"];
 const interestOptions = ["Fishing", "Weather", "Ecology", "Lakes", "Laws", "NOAA"];
 const defaultSettings = {
   displayName: "Angler",
@@ -210,6 +210,35 @@ function saveSettings(settings) {
   localStorage.setItem("dumbartonFishingSettings", JSON.stringify(settings));
 }
 
+function useMetric(settings) {
+  return (settings.units || "").toLowerCase().startsWith("metric");
+}
+
+function formatTemperature(value, settings) {
+  if (value === null || value === undefined || value === "--") return "--";
+  if (useMetric(settings)) return `${Math.round((Number(value) - 32) * 5 / 9)} C`;
+  return `${Math.round(Number(value))} F`;
+}
+
+function formatWind(value, settings) {
+  if (value === null || value === undefined || value === "--") return "--";
+  if (useMetric(settings)) return `${Math.round(Number(value) * 1.609)} km/h`;
+  return `${Math.round(Number(value))} mph`;
+}
+
+function formatMovement(value, settings) {
+  if (value === null || value === undefined || value === "--") return "--";
+  if (useMetric(settings)) return `${(Number(value) * 0.3048).toFixed(2)} m/hr`;
+  return `${Number(value).toFixed(2)} ft/hr`;
+}
+
+function localizeReasonText(text, settings) {
+  if (!useMetric(settings)) return text;
+  return text
+    .replace(/about ([0-9.]+) mph wind/g, (_, value) => `about ${Math.round(Number(value) * 1.609)} km/h wind`)
+    .replace(/water temperature is ([0-9.]+) degrees F/g, (_, value) => `water temperature is ${Math.round((Number(value) - 32) * 5 / 9)} degrees C`);
+}
+
 function isoDate(date) {
   return date.toISOString().slice(0, 10);
 }
@@ -265,12 +294,12 @@ function TideChart({ data }) {
   );
 }
 
-function WeatherChart({ data }) {
+function WeatherChart({ data, settings }) {
   const bars = (data || []).slice(0, 12);
   return h(
     "div",
     { className: "chart weather-card" },
-    h("div", { className: "chart-head" }, h("span", null, "Wind + weather"), h("strong", null, "mph")),
+    h("div", { className: "chart-head" }, h("span", null, "Wind + weather"), h("strong", null, useMetric(settings) ? "km/h" : "mph")),
     h(
       "div",
       { className: "bar-chart" },
@@ -347,15 +376,15 @@ function HomePage({ selected, setSelected, forecast, loading, settings }) {
       "section",
       { className: "reason-row", key: "home-reasons" },
       ...(forecast ? forecast.reasons : ["Loading tide, wind, water temperature, and moon data."]).map((reason, index) =>
-        h("article", { className: "reason-card", key: reason }, h("strong", null, index + 1), h("p", null, reason))
+        h("article", { className: "reason-card", key: reason }, h("strong", null, index + 1), h("p", null, localizeReasonText(reason, settings)))
       )
     ),
-    h("section", { className: "charts-grid", key: "home-charts" }, h(TideChart, { data: (forecast && forecast.tides) || [] }), h(WeatherChart, { data: (forecast && forecast.weather) || [] })),
+    h("section", { className: "charts-grid", key: "home-charts" }, h(TideChart, { data: (forecast && forecast.tides) || [] }), h(WeatherChart, { data: (forecast && forecast.weather) || [], settings })),
     h(
       "section",
       { className: "metrics", key: "home-metrics" },
-      h("article", null, h("span", null, "Water"), h("strong", null, forecast && forecast.waterTemp ? `${Math.round(forecast.waterTemp)} F` : "--")),
-      h("article", null, h("span", null, "Current"), h("strong", null, forecast && forecast.best && forecast.best.movement ? `${forecast.best.movement} ft/hr` : "--")),
+      h("article", null, h("span", null, "Water"), h("strong", null, forecast && forecast.waterTemp ? formatTemperature(forecast.waterTemp, settings) : "--")),
+      h("article", null, h("span", null, "Current"), h("strong", null, forecast && forecast.best && forecast.best.movement ? formatMovement(forecast.best.movement, settings) : "--")),
       h("article", null, h("span", null, "Moon"), h("strong", null, `${(forecast && forecast.moon && forecast.moon.illumination) || "--"}%`)),
       h("article", null, h("span", null, "Top tide"), h("strong", null, (forecast && forecast.best && forecast.best.tide) || "--"))
     ),
@@ -396,6 +425,15 @@ function ExploreCard({ item }) {
 function ExplorePage({ settings }) {
   const [filter, setFilter] = useState(settings.learningInterests[0] || "All");
   const filtered = filter === "All" ? exploreFeed : exploreFeed.filter((item) => item.tag === filter);
+  const cycleMyTopic = () => {
+    const topics = (settings.learningInterests || []).filter((name) => feedFilters.includes(name));
+    if (!topics.length) {
+      setFilter("NOAA");
+      return;
+    }
+    const current = topics.indexOf(filter);
+    setFilter(topics[(current + 1) % topics.length]);
+  };
 
   return [
     h(
@@ -408,7 +446,7 @@ function ExplorePage({ settings }) {
       "section",
       { className: "explore-search", key: "explore-search" },
       h("span", null, `${filtered.length} resources for ${filter}`),
-      h("button", { onClick: () => setFilter(settings.learningInterests[0] || "NOAA") }, "My topics")
+      h("button", { onClick: cycleMyTopic }, `My topics: ${filter}`)
     ),
     h(
       "section",
@@ -436,7 +474,7 @@ function ExplorePage({ settings }) {
   ];
 }
 
-function NoCatchPage({ forecast, loading }) {
+function NoCatchPage({ forecast, loading, settings }) {
   const noCatch = forecast && forecast.noCatch;
   const positioning = noCatch && noCatch.positioning;
   const water = noCatch && noCatch.waterTemperature;
@@ -498,7 +536,7 @@ function NoCatchPage({ forecast, loading }) {
         "article",
         null,
         h("span", null, "Water"),
-        h("strong", null, water ? `${water.status}${forecast && forecast.waterTemp ? ` - ${Math.round(forecast.waterTemp)} F` : ""}` : "--"),
+        h("strong", null, water ? `${water.status}${forecast && forecast.waterTemp ? ` - ${formatTemperature(forecast.waterTemp, settings)}` : ""}` : "--"),
         h("p", null, water ? water.advice : "Water temperature will be used when a nearby NOAA station reports it.")
       ),
       h(
@@ -534,6 +572,59 @@ function NoCatchPage({ forecast, loading }) {
   ];
 }
 
+function PostPage({ forecast, loading, settings }) {
+  const [copied, setCopied] = useState(false);
+  const preferred = (settings.preferredSpecies || []).slice(0, 2).join(" and ") || "local fish";
+  const outlook = forecast
+    ? [
+        `${settings.spotName || "Dumbarton Bridge"} fishing outlook`,
+        `${forecast.status} day, ${forecast.score}/100.`,
+        `Best window: ${forecast.bestWindow}.`,
+        `Water: ${forecast.waterTemp ? formatTemperature(forecast.waterTemp, settings) : "not reporting"}. Wind near best window: ${formatWind(forecast.best && forecast.best.wind, settings)}.`,
+        `Top species to consider: ${preferred}.`,
+        `Why: ${localizeReasonText(forecast.reasons[0], settings)}`,
+        `Safety: ${forecast.alerts[0]}`,
+        "Data: NOAA tides, NOAA/NWS weather, and nearby NOAA observations.",
+      ].join("\n")
+    : "Loading today’s NOAA-backed fishing outlook.";
+  const copyPost = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(outlook).then(() => setCopied(true));
+    } else {
+      setCopied(true);
+    }
+  };
+
+  return [
+    h(
+      "section",
+      { className: "topbar post-top", key: "post-top" },
+      h("div", null, h("p", { className: "eyebrow" }, "Post"), h("h1", null, "Share outlook")),
+      h("div", { className: "avatar" }, h(Icon, { name: "plus" }))
+    ),
+    h(
+      "section",
+      { className: "post-card", key: "post-card" },
+      h("p", { className: "eyebrow" }, "Generated from live data"),
+      h("h2", null, loading || !forecast ? "Building post..." : `${forecast.status} day - ${forecast.score}/100`),
+      h("p", null, forecast ? `Best window ${forecast.bestWindow}, with ${formatWind(forecast.best && forecast.best.wind, settings)} wind.` : "Waiting for NOAA data.")
+    ),
+    h(
+      "section",
+      { className: "post-preview", key: "post-preview" },
+      h("div", { className: "section-head compact" }, h("h2", null, "Outlook text"), h("span", null, "editable soon")),
+      h("pre", null, outlook),
+      h("button", { onClick: copyPost }, copied ? "Copied outlook" : "Copy outlook")
+    ),
+    h(
+      "section",
+      { className: "post-tips", key: "post-tips" },
+      h("article", null, h("strong", null, "Keep it honest"), h("p", null, "This post says which public data shaped the forecast and avoids promising catches.")),
+      h("article", null, h("strong", null, "Useful for friends"), h("p", null, "It includes score, window, wind, water, species, reason, and safety note."))
+    )
+  ];
+}
+
 function severityClass(severity) {
   const text = (severity || "").toLowerCase();
   if (text.includes("high") || text.includes("severe") || text.includes("extreme")) return "high";
@@ -541,8 +632,10 @@ function severityClass(severity) {
   return "low";
 }
 
-function AlertMap({ points = [], center }) {
+function AlertMap({ points = [], center, settings }) {
+  const [selectedName, setSelectedName] = useState("Dumbarton Bridge");
   const all = points.length ? points : [center].filter(Boolean);
+  const selected = all.find((point) => point.name === selectedName) || all[0];
   const lats = all.map((p) => p.lat);
   const lons = all.map((p) => p.lon);
   const minLat = Math.min(...lats);
@@ -558,23 +651,37 @@ function AlertMap({ points = [], center }) {
   return h(
     "div",
     { className: "alert-map" },
-    h("div", { className: "map-head" }, h("strong", null, "Nearby scan map"), h("span", null, "NOAA/NWS grid")),
+    h("div", { className: "map-head" }, h("strong", null, "Nearby scan map"), h("span", null, "touch a dot")),
     h(
       "svg",
       { viewBox: "0 0 300 172", role: "img", "aria-label": "Geospatial weather anomaly map near Dumbarton Bridge" },
+      h("defs", null, h("linearGradient", { id: "mapSky", x1: "0", x2: "1" }, h("stop", { offset: "0%", stopColor: "#e8f7fb" }), h("stop", { offset: "100%", stopColor: "#fff3c4" }))),
+      h("rect", { className: "map-sky", x: "0", y: "0", width: "300", height: "172", rx: "18" }),
+      h("g", { className: "map-sun" }, h("circle", { cx: "250", cy: "35", r: "17" }), h("path", { d: "M250 8v11M250 51v11M223 35h11M266 35h11M231 16l8 8M261 46l8 8M269 16l-8 8M239 46l-8 8" })),
       h("path", { className: "map-water", d: "M25 126 C72 92 88 46 142 64 C198 82 217 22 277 36 L277 150 L25 150 Z" }),
       h("path", { className: "map-shore", d: "M25 126 C78 110 105 92 151 102 C201 113 235 82 277 88" }),
       ...all.map((point) => {
         const pos = plot(point);
         const bridge = point.name === "Dumbarton Bridge";
+        const active = selected && selected.name === point.name;
+        const selectPoint = () => setSelectedName(point.name);
         return h(
           "g",
-          { key: point.name },
-          h("circle", { className: bridge ? "map-dot bridge" : "map-dot", cx: pos.x, cy: pos.y, r: bridge ? 8 : 6 }),
-          h("text", { x: Math.min(236, pos.x + 8), y: Math.max(18, pos.y - 8) }, bridge ? "Bridge" : point.name.split(" ")[0])
+          { key: point.name, className: "map-point", onClick: selectPoint, onPointerDown: selectPoint, onTouchStart: selectPoint, tabIndex: 0, role: "button", "aria-label": `${point.name} ${point.fishingScore || "--"} fishing score` },
+          h("circle", { className: `${bridge ? "map-dot bridge" : "map-dot"} ${active ? "active" : ""}`, cx: pos.x, cy: pos.y, r: active ? 10 : bridge ? 8 : 6, onClick: selectPoint, onPointerDown: selectPoint, onTouchStart: selectPoint }),
+          h("text", { x: Math.min(236, pos.x + 9), y: Math.max(18, pos.y - 9) }, bridge ? "Bridge" : point.name.split(" ")[0])
         );
       })
-    )
+    ),
+    selected
+      ? h(
+          "div",
+          { className: "map-callout" },
+          h("div", null, h("strong", null, selected.name), h("span", null, selected.short || "NOAA/NWS forecast")),
+          h("p", null, `${formatTemperature(selected.temp, settings)} nearby, ${formatWind(selected.wind, settings)} wind, ${selected.precip ?? 0}% rain`),
+          h("b", null, `${selected.fishingScore ?? "--"}/100 fishing`)
+        )
+      : null
   );
 }
 
@@ -611,7 +718,7 @@ function AlertsPage({ selected, settings }) {
       h("div", null, h("p", { className: "eyebrow" }, `${settings.alertSensitivity} alerts`), h("h2", null, loading ? "Scanning NOAA..." : `${scan.status} conditions`), h("p", null, scan ? scan.summary : "Comparing nearby NOAA/NWS grid points for weather outliers.")),
       h("strong", null, loading ? "--" : anomalies.length)
     ),
-    h(AlertMap, { key: "alert-map", points, center: scan && scan.center }),
+    h(AlertMap, { key: "alert-map", points, center: scan && scan.center, settings }),
     h(
       "section",
       { className: "alert-list", key: "alert-list" },
@@ -637,9 +744,9 @@ function AlertsPage({ selected, settings }) {
           "article",
           { key: point.name },
           h("strong", null, point.name),
-          h("span", null, `${point.wind ?? "--"} mph wind`),
-          h("span", null, `${point.temp ?? "--"} F`),
-          h("span", null, `${point.precip ?? 0}% rain`)
+          h("span", null, `${formatWind(point.wind, settings)} wind`),
+          h("span", null, formatTemperature(point.temp, settings)),
+          h("span", null, `${point.fishingScore ?? "--"}/100 fishing`)
         )
       )
     )
@@ -695,7 +802,7 @@ function ProfilePage({ settings, setSettings }) {
         "label",
         null,
         h("span", null, "Units"),
-        h("select", { value: settings.units, onChange: (event) => updateSetting("units", event.target.value) }, h("option", null, "US customary"), h("option", null, "Metric soon"))
+        h("select", { value: settings.units, onChange: (event) => updateSetting("units", event.target.value) }, h("option", null, "US customary"), h("option", null, "Metric"))
       ),
       h("div", { className: "choice-group" }, h("strong", null, "Preferred fish"), h("p", null, "These appear first on Home."), ...speciesOptions.map((name) => h("button", { className: settings.preferredSpecies.includes(name) ? "active" : "", key: name, onClick: () => toggleArraySetting("preferredSpecies", name) }, name))),
       h("div", { className: "choice-group" }, h("strong", null, "Learning topics"), h("p", null, "Explore opens with your first selected topic."), ...interestOptions.map((name) => h("button", { className: settings.learningInterests.includes(name) ? "active" : "", key: name, onClick: () => toggleArraySetting("learningInterests", name) }, name))),
@@ -737,13 +844,19 @@ function ProfilePage({ settings, setSettings }) {
         h("h3", null, "Learn in Explore"),
         h("p", null, "Explore has free NOAA, EPA, and education resources about fishing, weather, ecology, lakes, water laws, and conservation.")
       ),
+      h(
+        "article",
+        null,
+        h("h3", null, "Share in Post"),
+        h("p", null, "Post creates a simple fishing outlook from the live forecast, including score, best window, wind, water, safety, and data sources.")
+      ),
       h("div", { className: "faq-title" }, "FAQs"),
       h("details", null, h("summary", null, "What does the fishing score mean?"), h("p", null, "It is a 0 to 100 estimate based on tide movement, wind, water temperature when available, moon phase, and daylight timing.")),
       h("details", null, h("summary", null, "Why did I not catch anything?"), h("p", null, "Open Clues. Start with the visible-bait plan: fish the outside edge, probe deeper, work the nearest drop-off or cover transition, then relocate only after changing depth.")),
       h("details", null, h("summary", null, "How often does the app update?"), h("p", null, "Weather and alerts can refresh about every 10 to 20 minutes. Tide predictions are cached for about 1 hour.")),
       h("details", null, h("summary", null, "Is this a safety guarantee?"), h("p", null, "No. It is a decision aid. Always look at the water, check official warnings, and avoid fishing if conditions feel unsafe.")),
       h("details", null, h("summary", null, "Why does water temperature sometimes show blank?"), h("p", null, "Some NOAA stations do not report every product at all times. When water temperature is missing, the app leans more on tide, wind, and light.")),
-      h("details", null, h("summary", null, "Which tab should I use first?"), h("p", null, "Use Home for today’s fishing decision, Clues after a no-catch trip, Alerts for safety, Explore for learning, and Profile for help and app settings."))
+      h("details", null, h("summary", null, "Which tab should I use first?"), h("p", null, "Use Home for today’s fishing decision, Clues after a no-catch trip, Post to share the outlook, Alerts for safety, Explore for learning, and Profile for settings."))
     )
   ];
 }
@@ -754,7 +867,8 @@ function BottomNav({ activeTab, setActiveTab }) {
     { className: "bottom-nav", "aria-label": "Main navigation" },
     h("button", { className: activeTab === "home" ? "selected" : "", onClick: () => setActiveTab("home") }, h(Icon, { name: "home" }), h("span", null, "Home")),
     h("button", { className: activeTab === "explore" ? "selected" : "", onClick: () => setActiveTab("explore") }, h(Icon, { name: "compass" }), h("span", null, "Explore")),
-    h("button", { className: activeTab === "clues" ? "add selected" : "add", onClick: () => setActiveTab("clues"), "aria-label": "Clues" }, h(Icon, { name: "fish" }), h("span", null, "Clues")),
+    h("button", { className: activeTab === "clues" ? "selected" : "", onClick: () => setActiveTab("clues") }, h(Icon, { name: "fish" }), h("span", null, "Clues")),
+    h("button", { className: activeTab === "post" ? "add selected" : "add", onClick: () => setActiveTab("post"), "aria-label": "Post" }, h(Icon, { name: "plus" }), h("span", null, "Post")),
     h("button", { className: activeTab === "alerts" ? "selected" : "", onClick: () => setActiveTab("alerts") }, h(Icon, { name: "bell" }), h("span", null, "Alerts")),
     h("button", { className: activeTab === "profile" ? "selected" : "", onClick: () => setActiveTab("profile") }, h(Icon, { name: "user" }), h("span", null, "Profile"))
   );
@@ -807,11 +921,13 @@ function App() {
 
   return h(
     "main",
-    { className: `phone-shell ${activeTab === "explore" ? "explore-shell" : ""} ${activeTab === "alerts" ? "alerts-shell" : ""} ${activeTab === "clues" ? "clues-shell" : ""}` },
+    { className: `phone-shell ${activeTab === "explore" ? "explore-shell" : ""} ${activeTab === "alerts" ? "alerts-shell" : ""} ${activeTab === "clues" ? "clues-shell" : ""} ${activeTab === "post" ? "post-shell" : ""}` },
     activeTab === "explore"
       ? h(ExplorePage, { key: "explore-page", settings })
       : activeTab === "clues"
-        ? h(NoCatchPage, { key: "clues-page", forecast, loading })
+        ? h(NoCatchPage, { key: "clues-page", forecast, loading, settings })
+      : activeTab === "post"
+        ? h(PostPage, { key: "post-page", forecast, loading, settings })
       : activeTab === "alerts"
         ? h(AlertsPage, { key: "alerts-page", selected, settings })
         : activeTab === "profile"
