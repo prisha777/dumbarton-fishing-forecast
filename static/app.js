@@ -511,6 +511,32 @@ function BottomNav({ activeTab, setActiveTab }) {
 }
 
 function App() {
+  if (window.location.protocol === "file:") {
+    return h(
+      "main",
+      { className: "phone-shell file-shell" },
+      h(
+        "section",
+        { className: "topbar" },
+        h("div", null, h("p", { className: "eyebrow" }, "App setup"), h("h1", null, "Open with server")),
+        h("div", { className: "avatar" }, h(Icon, { name: "fish" }))
+      ),
+      h(
+        "section",
+        { className: "file-card" },
+        h("h2", null, "This file view cannot load NOAA data"),
+        h("p", null, "The app needs the local Python backend for tides, weather, alerts, and settings. Use the server link below."),
+        h("a", { href: "http://127.0.0.1:8787/" }, "Open working app")
+      ),
+      h(
+        "section",
+        { className: "help-section" },
+        h("div", { className: "section-head compact" }, h("h2", null, "How to open")),
+        h("article", null, h("h3", null, "Use the localhost link"), h("p", null, "Keep the Python server running, then open http://127.0.0.1:8787 in the browser."))
+      )
+    );
+  }
+
   const [selected, setSelected] = useState(isoDate(today));
   const [forecast, setForecast] = useState(null);
   const [loading, setLoading] = useState(true);

@@ -945,6 +945,39 @@ svg {
   line-height: 1.35;
 }
 
+.file-card {
+  border-radius: 18px;
+  background: var(--sun);
+  padding: 22px;
+  margin-top: 18px;
+}
+
+.file-card h2 {
+  font-size: 26px;
+  line-height: 1;
+  margin-bottom: 10px;
+}
+
+.file-card p {
+  color: #4c3d20;
+  font-size: 15px;
+  line-height: 1.36;
+  margin-bottom: 16px;
+}
+
+.file-card a {
+  display: inline-flex;
+  min-height: 46px;
+  align-items: center;
+  border-radius: 999px;
+  background: #111;
+  color: #fff;
+  padding: 0 18px;
+  font-size: 15px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
 .help-section {
   background: #fff;
   border-radius: 18px;
