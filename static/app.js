@@ -448,7 +448,7 @@ function ProfilePage() {
     h(
       "section",
       { className: "topbar profile-top", key: "profile-top" },
-      h("div", null, h("p", { className: "eyebrow" }, "Profile"), h("h1", null, "Fishing setup")),
+      h("div", null, h("p", { className: "eyebrow" }, "Profile"), h("h1", null, "Settings & Help")),
       h("div", { className: "avatar" }, h(Icon, { name: "user" }))
     ),
     h(
